@@ -262,6 +262,10 @@
 #define INST_SRET 0x80000073
 #define INST_SRET_MASK 0xffffffff
 
+// csrrw
+#define INST_CSRRW 0x1073
+#define INST_CSRRW_MASK 0x707f
+
 // csrrs
 #define INST_CSRRS 0x2073
 #define INST_CSRRS_MASK 0x707f

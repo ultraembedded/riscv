@@ -225,32 +225,39 @@ uint32_t Riscv::AccessCsr(uint32_t address, uint32_t data, bool set, bool clr)
     {
         case CSR_EPC:
             result      = csr_epc;
-            if (set)
+            if (set && clr)
+                csr_epc = data;
+            else if (set)
                 csr_epc    |= data;
             else if (clr)
                 csr_epc    &= ~data;
             break;
         case CSR_EVEC:
             result      = csr_evec;
-            if (set)
+            if (set && clr)
+                csr_evec = data;
+            else if (set)
                 csr_evec    |= data;
             else if (clr)
                 csr_evec    &= ~data;
             break;
         case CSR_CAUSE:
             result      = csr_cause;
-            if (set)
+            if (set && clr)
+                csr_cause = data;
+            else if (set)
                 csr_cause    |= data;
             else if (clr)
                 csr_cause    &= ~data;
             break;
         case CSR_STATUS:
             result      = csr_sr;
-            if (set)
+            if (set && clr)
+                csr_sr = data;
+            else if (set)
                 csr_sr    |= data;
             else if (clr)
                 csr_sr    &= ~data;
-            DPRINTF(LOG_INST,( "SR = %x, was %x\n", csr_sr, result));
             break;
     }
     return result;
@@ -651,51 +658,63 @@ void Riscv::Execute(void)
         // ['rd', 'rs1', 'rs2']
         long long res = ((long long) (int)reg_rs1) * ((long long)(int)reg_rs2);
         DPRINTF(LOG_INST,("%08x: mulh r%d, r%d, r%d\n", pc, rd, rs1, rs2));
-        reg_rd = (int)(res >> 32);        
-        pc += 4;        
+        reg_rd = (int)(res >> 32);
+        pc += 4;
     }
     else if ((opcode & INST_MULHSU_MASK) == INST_MULHSU)
     {
         // ['rd', 'rs1', 'rs2']
-        fprintf(stderr, "Unsupported instruction @ %x\n", pc);
-        Exception(CAUSE_ILLEGAL_INSTRUCTION, pc);
-        Fault = true;
-        exception = true;
+        long long res = ((long long) (int)reg_rs1) * ((unsigned long long)(unsigned)reg_rs2);
+        DPRINTF(LOG_INST,("%08x: mulhsu r%d, r%d, r%d\n", pc, rd, rs1, rs2));
+        reg_rd = (int)(res >> 32);
+        pc += 4;
     }
     else if ((opcode & INST_MULHU_MASK) == INST_MULHU)
     {
         // ['rd', 'rs1', 'rs2']
-        fprintf(stderr, "Unsupported instruction @ %x\n", pc);
-        Exception(CAUSE_ILLEGAL_INSTRUCTION, pc);
-        Fault = true;
-        exception = true;
+        unsigned long long res = ((unsigned long long) (unsigned)reg_rs1) * ((unsigned long long)(unsigned)reg_rs2);
+        DPRINTF(LOG_INST,("%08x: mulhu r%d, r%d, r%d\n", pc, rd, rs1, rs2));
+        reg_rd = (int)(res >> 32);
+        pc += 4;
     }
     else if ((opcode & INST_DIV_MASK) == INST_DIV)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: div r%d, r%d, r%d\n", pc, rd, rs1, rs2));
-        reg_rd = (signed)reg_rs1 / (signed)reg_rs2;
+        if (reg_rs2 != 0)
+            reg_rd = (signed)reg_rs1 / (signed)reg_rs2;
+        else
+            reg_rd = (unsigned)-1;
         pc += 4;        
     }
     else if ((opcode & INST_DIVU_MASK) == INST_DIVU)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: divu r%d, r%d, r%d\n", pc, rd, rs1, rs2));
-        reg_rd = (unsigned)reg_rs1 / (unsigned)reg_rs2;
+        if (reg_rs2 != 0)
+            reg_rd = (unsigned)reg_rs1 / (unsigned)reg_rs2;
+        else
+            reg_rd = (unsigned)-1;
         pc += 4;        
     }
     else if ((opcode & INST_REM_MASK) == INST_REM)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: rem r%d, r%d, r%d\n", pc, rd, rs1, rs2));
-        reg_rd = (signed)reg_rs1 % (signed)reg_rs2;
+        if (reg_rs2 != 0)
+            reg_rd = (signed)reg_rs1 % (signed)reg_rs2;
+        else
+            reg_rd = reg_rs1;
         pc += 4;        
     }
     else if ((opcode & INST_REMU_MASK) == INST_REMU)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: remu r%d, r%d, r%d\n", pc, rd, rs1, rs2));
-        reg_rd = (unsigned)reg_rs1 % (unsigned)reg_rs2;
+        if (reg_rs2 != 0)
+            reg_rd = (unsigned)reg_rs1 % (unsigned)reg_rs2;
+        else
+            reg_rd = reg_rs1;
         pc += 4;        
     }
     else if ((opcode & INST_SCALL_MASK) == INST_SCALL)
@@ -732,13 +751,21 @@ void Riscv::Execute(void)
         // Return to EPC
         pc          = csr_epc;        
     }
+    else if ((opcode & INST_CSRRW_MASK) == INST_CSRRW)
+    {
+        DPRINTF(LOG_INST,("%08x: csrw r%d, r%d, 0x%x\n", pc, rd, rs1, imm12));
+        reg_rd = AccessCsr(imm12, reg_rs1, true, true);
+        pc += 4;
+    }    
     else if ((opcode & INST_CSRRS_MASK) == INST_CSRRS)
     {
+        DPRINTF(LOG_INST,("%08x: csrs r%d, r%d, 0x%x\n", pc, rd, rs1, imm12));
         reg_rd = AccessCsr(imm12, reg_rs1, true, false);
         pc += 4;
     }
     else if ((opcode & INST_CSRRC_MASK) == INST_CSRRC)
     {
+        DPRINTF(LOG_INST,("%08x: csrc r%d, r%d, 0x%x\n", pc, rd, rs1, imm12));
         reg_rd = AccessCsr(imm12, reg_rs1, false, true);
         pc += 4;
     }    

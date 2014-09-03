@@ -111,7 +111,7 @@ public:
                 }
 
                 if (signedLoad)
-                    if (data & (1 << 15))
+                    if (data & (1 << 7))
                         data |= 0xFFFFFF00;
             break;
         }
