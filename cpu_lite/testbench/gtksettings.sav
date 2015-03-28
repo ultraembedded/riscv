@@ -1,0 +1,86 @@
+[treeopen] top_tb.
+[treeopen] top_tb.u_exec.
+[treeopen] top_tb.u_exec.REGFILE_SIM.
+[sst_width] 223
+[signals_width] 305
+[sst_expanded] 1
+[sst_vpaned_height] 259
+@28
+top_tb.u_gen.clk_i
+top_tb.u_gen.rst_i
+top_tb.u_exec.intr_i
+@200
+-
+@800200
+-Memory Interface
+@22
+#{top_tb.u_exec.mem_addr_o[31:0]} top_tb.u_exec.mem_addr_o[31] top_tb.u_exec.mem_addr_o[30] top_tb.u_exec.mem_addr_o[29] top_tb.u_exec.mem_addr_o[28] top_tb.u_exec.mem_addr_o[27] top_tb.u_exec.mem_addr_o[26] top_tb.u_exec.mem_addr_o[25] top_tb.u_exec.mem_addr_o[24] top_tb.u_exec.mem_addr_o[23] top_tb.u_exec.mem_addr_o[22] top_tb.u_exec.mem_addr_o[21] top_tb.u_exec.mem_addr_o[20] top_tb.u_exec.mem_addr_o[19] top_tb.u_exec.mem_addr_o[18] top_tb.u_exec.mem_addr_o[17] top_tb.u_exec.mem_addr_o[16] top_tb.u_exec.mem_addr_o[15] top_tb.u_exec.mem_addr_o[14] top_tb.u_exec.mem_addr_o[13] top_tb.u_exec.mem_addr_o[12] top_tb.u_exec.mem_addr_o[11] top_tb.u_exec.mem_addr_o[10] top_tb.u_exec.mem_addr_o[9] top_tb.u_exec.mem_addr_o[8] top_tb.u_exec.mem_addr_o[7] top_tb.u_exec.mem_addr_o[6] top_tb.u_exec.mem_addr_o[5] top_tb.u_exec.mem_addr_o[4] top_tb.u_exec.mem_addr_o[3] top_tb.u_exec.mem_addr_o[2] top_tb.u_exec.mem_addr_o[1] top_tb.u_exec.mem_addr_o[0]
+#{top_tb.u_exec.mem_dat_o[31:0]} top_tb.u_exec.mem_dat_o[31] top_tb.u_exec.mem_dat_o[30] top_tb.u_exec.mem_dat_o[29] top_tb.u_exec.mem_dat_o[28] top_tb.u_exec.mem_dat_o[27] top_tb.u_exec.mem_dat_o[26] top_tb.u_exec.mem_dat_o[25] top_tb.u_exec.mem_dat_o[24] top_tb.u_exec.mem_dat_o[23] top_tb.u_exec.mem_dat_o[22] top_tb.u_exec.mem_dat_o[21] top_tb.u_exec.mem_dat_o[20] top_tb.u_exec.mem_dat_o[19] top_tb.u_exec.mem_dat_o[18] top_tb.u_exec.mem_dat_o[17] top_tb.u_exec.mem_dat_o[16] top_tb.u_exec.mem_dat_o[15] top_tb.u_exec.mem_dat_o[14] top_tb.u_exec.mem_dat_o[13] top_tb.u_exec.mem_dat_o[12] top_tb.u_exec.mem_dat_o[11] top_tb.u_exec.mem_dat_o[10] top_tb.u_exec.mem_dat_o[9] top_tb.u_exec.mem_dat_o[8] top_tb.u_exec.mem_dat_o[7] top_tb.u_exec.mem_dat_o[6] top_tb.u_exec.mem_dat_o[5] top_tb.u_exec.mem_dat_o[4] top_tb.u_exec.mem_dat_o[3] top_tb.u_exec.mem_dat_o[2] top_tb.u_exec.mem_dat_o[1] top_tb.u_exec.mem_dat_o[0]
+#{top_tb.u_exec.mem_dat_i[31:0]} top_tb.u_exec.mem_dat_i[31] top_tb.u_exec.mem_dat_i[30] top_tb.u_exec.mem_dat_i[29] top_tb.u_exec.mem_dat_i[28] top_tb.u_exec.mem_dat_i[27] top_tb.u_exec.mem_dat_i[26] top_tb.u_exec.mem_dat_i[25] top_tb.u_exec.mem_dat_i[24] top_tb.u_exec.mem_dat_i[23] top_tb.u_exec.mem_dat_i[22] top_tb.u_exec.mem_dat_i[21] top_tb.u_exec.mem_dat_i[20] top_tb.u_exec.mem_dat_i[19] top_tb.u_exec.mem_dat_i[18] top_tb.u_exec.mem_dat_i[17] top_tb.u_exec.mem_dat_i[16] top_tb.u_exec.mem_dat_i[15] top_tb.u_exec.mem_dat_i[14] top_tb.u_exec.mem_dat_i[13] top_tb.u_exec.mem_dat_i[12] top_tb.u_exec.mem_dat_i[11] top_tb.u_exec.mem_dat_i[10] top_tb.u_exec.mem_dat_i[9] top_tb.u_exec.mem_dat_i[8] top_tb.u_exec.mem_dat_i[7] top_tb.u_exec.mem_dat_i[6] top_tb.u_exec.mem_dat_i[5] top_tb.u_exec.mem_dat_i[4] top_tb.u_exec.mem_dat_i[3] top_tb.u_exec.mem_dat_i[2] top_tb.u_exec.mem_dat_i[1] top_tb.u_exec.mem_dat_i[0]
+#{top_tb.u_exec.mem_sel_o[3:0]} top_tb.u_exec.mem_sel_o[3] top_tb.u_exec.mem_sel_o[2] top_tb.u_exec.mem_sel_o[1] top_tb.u_exec.mem_sel_o[0]
+@28
+top_tb.u_exec.mem_stb_o
+top_tb.u_exec.mem_stall_i
+top_tb.u_exec.mem_we_o
+top_tb.u_exec.mem_ack_i
+@1000200
+-Memory Interface
+@200
+-
+@800200
+-Instruction
+@22
+[color] 1
+top_tb.u_exec.pc_q[31:0]
+@821
+[color] 1
+top_tb.u_exec.dbg_inst_str[79:0]
+@820
+[color] 1
+top_tb.u_exec.dbg_inst_rd[79:0]
+[color] 1
+top_tb.u_exec.dbg_inst_rs1[79:0]
+[color] 1
+top_tb.u_exec.dbg_inst_rs2[79:0]
+@1000200
+-Instruction
+@200
+-
+@c00200
+-Registers
+@22
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r1_ra[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r2_s0[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r3_s1[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r4_s2[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r5_s3[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r6_s4[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r7_s5[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r8_s6[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r9_s7[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r10_s8[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r11_s9[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r12_s10[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r13_s11[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r14_sp[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r15_tp[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r16_v0[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r17_v1[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r18_a0[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r19_a1[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r20_a2[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r21_a3[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r22_a4[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r23_a5[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r24_a6[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r25_a7[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r26_t0[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r27_t1[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r28_t2[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r29_t3[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r30_t4[31:0]
+top_tb.u_exec.REGFILE_SIM.u_regfile.reg_r31_gp[31:0]
+@1401200
+-Registers
+[pattern_trace] 1
+[pattern_trace] 0
