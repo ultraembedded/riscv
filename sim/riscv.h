@@ -129,6 +129,7 @@ private:
 
     // Stats
     uint32_t            Stats[STATS_MAX];
+    uint32_t            StatsInst[ENUM_INST_MAX];
 };
 
 #endif

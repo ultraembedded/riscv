@@ -135,6 +135,9 @@ void Riscv::ResetStats(void)
     // Clear stats
     for (i=STATS_MIN;i<STATS_MAX;i++)
         Stats[i] = 0;
+
+    for (i=0;i<ENUM_INST_MAX;i++)
+        StatsInst[i] = 0;
 }
 //-----------------------------------------------------------------
 // LoadMem: Load program code into startAddr offset
@@ -224,33 +227,44 @@ uint32_t Riscv::AccessCsr(uint32_t address, uint32_t data, bool set, bool clr)
     switch (address)
     {
         case CSR_EPC:
+            data       &= CSR_EPC_MASK;
             result      = csr_epc;
-            if (set)
+            if (set && clr)
+                csr_epc = data;
+            else if (set)
                 csr_epc    |= data;
             else if (clr)
                 csr_epc    &= ~data;
             break;
         case CSR_EVEC:
+            data       &= CSR_EVEC_MASK;
             result      = csr_evec;
-            if (set)
+            if (set && clr)
+                csr_evec = data;
+            else if (set)
                 csr_evec    |= data;
             else if (clr)
                 csr_evec    &= ~data;
             break;
         case CSR_CAUSE:
+            data       &= CSR_CAUSE_MASK;
             result      = csr_cause;
-            if (set)
+            if (set && clr)
+                csr_cause = data;
+            else if (set)
                 csr_cause    |= data;
             else if (clr)
                 csr_cause    &= ~data;
             break;
         case CSR_STATUS:
+            data       &= CSR_STATUS_MASK;
             result      = csr_sr;
-            if (set)
+            if (set && clr)
+                csr_sr = data;
+            else if (set)
                 csr_sr    |= data;
             else if (clr)
                 csr_sr    &= ~data;
-            DPRINTF(LOG_INST,( "SR = %x, was %x\n", csr_sr, result));
             break;
     }
     return result;
@@ -321,6 +335,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'imm12']
         DPRINTF(LOG_INST,("%08x: andi r%d, r%d, %d\n", pc, rd, rs1, imm12));
+        StatsInst[ENUM_INST_ANDI]++;
         reg_rd = reg_rs1 & imm12;
         pc += 4;        
     }
@@ -328,6 +343,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'imm12']
         DPRINTF(LOG_INST,("%08x: ori r%d, r%d, %d\n", pc, rd, rs1, imm12));
+        StatsInst[ENUM_INST_ORI]++;
         reg_rd = reg_rs1 | imm12;
         pc += 4;        
     }
@@ -335,6 +351,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'imm12']
         DPRINTF(LOG_INST,("%08x: xori r%d, r%d, %d\n", pc, rd, rs1, imm12));
+        StatsInst[ENUM_INST_XORI]++;
         reg_rd = reg_rs1 ^ imm12;
         pc += 4;        
     }
@@ -342,6 +359,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'imm12']
         DPRINTF(LOG_INST,("%08x: addi r%d, r%d, %d\n", pc, rd, rs1, imm12));
+        StatsInst[ENUM_INST_ADDI]++;
         reg_rd = reg_rs1 + imm12;
         pc += 4;
     }
@@ -349,6 +367,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'imm12']
         DPRINTF(LOG_INST,("%08x: slti r%d, r%d, %d\n", pc, rd, rs1, imm12));
+        StatsInst[ENUM_INST_SLTI]++;
         reg_rd = (signed)reg_rs1 < (signed)imm12;
         pc += 4;        
     }
@@ -356,6 +375,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'imm12']
         DPRINTF(LOG_INST,("%08x: sltiu r%d, r%d, %d\n", pc, rd, rs1, (unsigned)imm12));
+        StatsInst[ENUM_INST_SLTIU]++;
         reg_rd = (unsigned)reg_rs1 < (unsigned)imm12;
         pc += 4;        
     }
@@ -363,6 +383,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1']
         DPRINTF(LOG_INST,("%08x: slli r%d, r%d, %d\n", pc, rd, rs1, shamt));
+        StatsInst[ENUM_INST_SLLI]++;
         reg_rd = reg_rs1 << shamt;
         pc += 4;        
     }
@@ -370,6 +391,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'shamt']
         DPRINTF(LOG_INST,("%08x: srli r%d, r%d, %d\n", pc, rd, rs1, shamt));
+        StatsInst[ENUM_INST_SRLI]++;
         reg_rd = (unsigned)reg_rs1 >> shamt;
         pc += 4;        
     }
@@ -377,6 +399,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'shamt']
         DPRINTF(LOG_INST,("%08x: srai r%d, r%d, %d\n", pc, rd, rs1, shamt));
+        StatsInst[ENUM_INST_SRAI]++;
         reg_rd = (signed)reg_rs1 >> shamt;
         pc += 4;        
     }
@@ -384,6 +407,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'imm20']
         DPRINTF(LOG_INST,("%08x: lui r%d, 0x%x\n", pc, rd, imm20));
+        StatsInst[ENUM_INST_LUI]++;
         reg_rd = imm20;
         pc += 4;        
     }
@@ -391,6 +415,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'imm20']
         DPRINTF(LOG_INST,("%08x: auipc r%d, 0x%x\n", pc, rd, imm20));
+        StatsInst[ENUM_INST_AUIPC]++;
         reg_rd = imm20 + pc;
         pc += 4;        
     }
@@ -398,6 +423,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: add r%d, r%d, r%d\n", pc, rd, rs1, rs2));
+        StatsInst[ENUM_INST_ADD]++;
         reg_rd = reg_rs1 + reg_rs2;
         pc += 4;        
     }
@@ -405,6 +431,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: sub r%d, r%d, r%d\n", pc, rd, rs1, rs2));
+        StatsInst[ENUM_INST_SUB]++;
         reg_rd = reg_rs1 - reg_rs2;
         pc += 4;        
     }
@@ -412,6 +439,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: slt r%d, r%d, r%d\n", pc, rd, rs1, rs2));
+        StatsInst[ENUM_INST_SLT]++;
         reg_rd = (signed)reg_rs1 < (signed)reg_rs2;
         pc += 4;        
     }
@@ -419,6 +447,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: sltu r%d, r%d, r%d\n", pc, rd, rs1, rs2));
+        StatsInst[ENUM_INST_SLTU]++;
         reg_rd = (unsigned)reg_rs1 < (unsigned)reg_rs2;
         pc += 4;        
     }
@@ -426,6 +455,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: xor r%d, r%d, r%d\n", pc, rd, rs1, rs2));
+        StatsInst[ENUM_INST_XOR]++;
         reg_rd = reg_rs1 ^ reg_rs2;
         pc += 4;        
     }
@@ -433,6 +463,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: or r%d, r%d, r%d\n", pc, rd, rs1, rs2));
+        StatsInst[ENUM_INST_OR]++;
         reg_rd = reg_rs1 | reg_rs2;
         pc += 4;        
     }
@@ -440,6 +471,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: and r%d, r%d, r%d\n", pc, rd, rs1, rs2));
+        StatsInst[ENUM_INST_AND]++;
         reg_rd = reg_rs1 & reg_rs2;
         pc += 4;        
     }
@@ -447,6 +479,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: sll r%d, r%d, r%d\n", pc, rd, rs1, rs2));
+        StatsInst[ENUM_INST_SLL]++;
         reg_rd = reg_rs1 << reg_rs2;
         pc += 4;        
     }
@@ -454,6 +487,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: srl r%d, r%d, r%d\n", pc, rd, rs1, rs2));
+        StatsInst[ENUM_INST_SRL]++;
         reg_rd = (unsigned)reg_rs1 >> reg_rs2;
         pc += 4;        
     }
@@ -461,6 +495,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: sra r%d, r%d, r%d\n", pc, rd, rs1, rs2));
+        StatsInst[ENUM_INST_SRA]++;
         reg_rd = (signed)reg_rs1 >> reg_rs2;
         pc += 4;        
     }
@@ -468,6 +503,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'jimm20']
         DPRINTF(LOG_INST,("%08x: jal r%d, %d\n", pc, rd, jimm20));
+        StatsInst[ENUM_INST_JAL]++;
         reg_rd = pc + 4;
         pc+= jimm20;
 
@@ -477,7 +513,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'imm12']
         DPRINTF(LOG_INST,("%08x: jalr r%d, r%d\n", pc, rs1, imm12));
-
+        StatsInst[ENUM_INST_JALR]++;
         reg_rd = pc + 4;
         pc = (reg_rs1 + imm12) & ~1;
 
@@ -487,6 +523,7 @@ void Riscv::Execute(void)
     {
         // ['bimm12hi', 'rs1', 'rs2', 'bimm12lo']
         DPRINTF(LOG_INST,("%08x: beq r%d, r%d, %d\n", pc, rs1, rs2, bimm));
+        StatsInst[ENUM_INST_BEQ]++;
         if (reg_rs1 == reg_rs2)
             pc += bimm;
         else
@@ -501,6 +538,7 @@ void Riscv::Execute(void)
     {
         // ['bimm12hi', 'rs1', 'rs2', 'bimm12lo']
         DPRINTF(LOG_INST,("%08x: bne r%d, r%d, %d\n", pc, rs1, rs2, bimm));
+        StatsInst[ENUM_INST_BNE]++;
         if (reg_rs1 != reg_rs2)
             pc += bimm;
         else
@@ -515,6 +553,7 @@ void Riscv::Execute(void)
     {
         // ['bimm12hi', 'rs1', 'rs2', 'bimm12lo']
         DPRINTF(LOG_INST,("%08x: blt r%d, r%d, %d\n", pc, rs1, rs2, bimm));
+        StatsInst[ENUM_INST_BLT]++;
         if ((signed)reg_rs1 < (signed)reg_rs2)
             pc += bimm;
         else
@@ -529,6 +568,7 @@ void Riscv::Execute(void)
     {
         // ['bimm12hi', 'rs1', 'rs2', 'bimm12lo']
         DPRINTF(LOG_INST,("%08x: bge r%d, r%d, %d\n", pc, rs1, rs2, bimm));
+        StatsInst[ENUM_INST_BGE]++;
         if ((signed)reg_rs1 >= (signed)reg_rs2)
             pc += bimm;
         else
@@ -543,6 +583,7 @@ void Riscv::Execute(void)
     {
         // ['bimm12hi', 'rs1', 'rs2', 'bimm12lo']
         DPRINTF(LOG_INST,("%08x: bltu r%d, r%d, %d\n", pc, rs1, rs2, bimm));
+        StatsInst[ENUM_INST_BLTU]++;
         if ((unsigned)reg_rs1 < (unsigned)reg_rs2)
             pc += bimm;
         else
@@ -557,6 +598,7 @@ void Riscv::Execute(void)
     {
         // ['bimm12hi', 'rs1', 'rs2', 'bimm12lo']
         DPRINTF(LOG_INST,("%08x: bgeu r%d, r%d, %d\n", pc, rs1, rs2, bimm));
+        StatsInst[ENUM_INST_BGEU]++;
         if ((unsigned)reg_rs1 >= (unsigned)reg_rs2)
             pc += bimm;
         else
@@ -571,6 +613,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'imm12']
         DPRINTF(LOG_INST,("%08x: lb r%d, %d(r%d)\n", pc, rd, imm12, rs1));
+        StatsInst[ENUM_INST_LB]++;
         reg_rd = Load(reg_rs1 + imm12, 1, true);
         pc += 4;
     }
@@ -578,20 +621,23 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'imm12']
         DPRINTF(LOG_INST,("%08x: lh r%d, %d(r%d)\n", pc, rd, imm12, rs1));
+        StatsInst[ENUM_INST_LH]++;
         reg_rd = Load(reg_rs1 + imm12, 2, true);
         pc += 4;
     }
     else if ((opcode & INST_LW_MASK) == INST_LW)
     {
-        // ['rd', 'rs1', 'imm12']
-        DPRINTF(LOG_INST,("%08x: lw r%d, %d(r%d)\n", pc, rd, imm12, rs1));
+        // ['rd', 'rs1', 'imm12']        
         reg_rd = Load(reg_rs1 + imm12, 4, true);
+        DPRINTF(LOG_INST,("%08x: lw r%d, %d(r%d) = 0x%x\n", pc, rd, imm12, rs1, reg_rd));
+        StatsInst[ENUM_INST_LW]++;
         pc += 4;        
     }
     else if ((opcode & INST_LBU_MASK) == INST_LBU)
     {
         // ['rd', 'rs1', 'imm12']
         DPRINTF(LOG_INST,("%08x: lbu r%d, %d(r%d)\n", pc, rd, imm12, rs1));
+        StatsInst[ENUM_INST_LBU]++;
         reg_rd = Load(reg_rs1 + imm12, 1, false);
         pc += 4;
     }
@@ -599,6 +645,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'imm12']
         DPRINTF(LOG_INST,("%08x: lhu r%d, %d(r%d)\n", pc, rd, imm12, rs1));
+        StatsInst[ENUM_INST_LHU]++;
         reg_rd = Load(reg_rs1 + imm12, 2, false);
         pc += 4;
     }
@@ -606,6 +653,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'imm12']
         DPRINTF(LOG_INST,("%08x: lwu r%d, %d(r%d)\n", pc, rd, imm12, rs1));
+        StatsInst[ENUM_INST_LWU]++;
         reg_rd = Load(reg_rs1 + imm12, 4, false);
         pc += 4;
     }
@@ -613,6 +661,7 @@ void Riscv::Execute(void)
     {
         // ['imm12hi', 'rs1', 'rs2', 'imm12lo']
         DPRINTF(LOG_INST,("%08x: sb %d(r%d), r%d\n", pc, storeimm, rs1, rs2));
+        StatsInst[ENUM_INST_SB]++;
         Store(reg_rs1 + storeimm, reg_rs2, 1);
         pc += 4;
 
@@ -623,6 +672,7 @@ void Riscv::Execute(void)
     {
         // ['imm12hi', 'rs1', 'rs2', 'imm12lo']
         DPRINTF(LOG_INST,("%08x: sh %d(r%d), r%d\n", pc, storeimm, rs1, rs2));
+        StatsInst[ENUM_INST_SH]++;
         Store(reg_rs1 + storeimm, reg_rs2, 2);
         pc += 4;
 
@@ -633,6 +683,7 @@ void Riscv::Execute(void)
     {
         // ['imm12hi', 'rs1', 'rs2', 'imm12lo']
         DPRINTF(LOG_INST,("%08x: sw %d(r%d), r%d\n", pc, storeimm, rs1, rs2));
+        StatsInst[ENUM_INST_SW]++;
         Store(reg_rs1 + storeimm, reg_rs2, 4);
         pc += 4;
 
@@ -643,6 +694,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: mul r%d, r%d, r%d\n", pc, rd, rs1, rs2));
+        StatsInst[ENUM_INST_MUL]++;
         reg_rd = (signed)reg_rs1 * (signed)reg_rs2;
         pc += 4;        
     }
@@ -650,57 +702,77 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         long long res = ((long long) (int)reg_rs1) * ((long long)(int)reg_rs2);
+        StatsInst[ENUM_INST_MULH]++;
         DPRINTF(LOG_INST,("%08x: mulh r%d, r%d, r%d\n", pc, rd, rs1, rs2));
-        reg_rd = (int)(res >> 32);        
-        pc += 4;        
+        reg_rd = (int)(res >> 32);
+        pc += 4;
     }
     else if ((opcode & INST_MULHSU_MASK) == INST_MULHSU)
     {
         // ['rd', 'rs1', 'rs2']
-        fprintf(stderr, "Unsupported instruction @ %x\n", pc);
-        Exception(CAUSE_ILLEGAL_INSTRUCTION, pc);
-        Fault = true;
-        exception = true;
+        long long res = ((long long) (int)reg_rs1) * ((unsigned long long)(unsigned)reg_rs2);
+        StatsInst[ENUM_INST_MULHSU]++;
+        DPRINTF(LOG_INST,("%08x: mulhsu r%d, r%d, r%d\n", pc, rd, rs1, rs2));
+        reg_rd = (int)(res >> 32);
+        pc += 4;
     }
     else if ((opcode & INST_MULHU_MASK) == INST_MULHU)
     {
         // ['rd', 'rs1', 'rs2']
-        fprintf(stderr, "Unsupported instruction @ %x\n", pc);
-        Exception(CAUSE_ILLEGAL_INSTRUCTION, pc);
-        Fault = true;
-        exception = true;
+        unsigned long long res = ((unsigned long long) (unsigned)reg_rs1) * ((unsigned long long)(unsigned)reg_rs2);
+        StatsInst[ENUM_INST_MULHU]++;
+        DPRINTF(LOG_INST,("%08x: mulhu r%d, r%d, r%d\n", pc, rd, rs1, rs2));
+        reg_rd = (int)(res >> 32);
+        pc += 4;
     }
     else if ((opcode & INST_DIV_MASK) == INST_DIV)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: div r%d, r%d, r%d\n", pc, rd, rs1, rs2));
-        reg_rd = (signed)reg_rs1 / (signed)reg_rs2;
+        StatsInst[ENUM_INST_DIV]++;
+        if (reg_rs2 != 0)
+            reg_rd = (signed)reg_rs1 / (signed)reg_rs2;
+        else
+            reg_rd = (unsigned)-1;
         pc += 4;        
     }
     else if ((opcode & INST_DIVU_MASK) == INST_DIVU)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: divu r%d, r%d, r%d\n", pc, rd, rs1, rs2));
-        reg_rd = (unsigned)reg_rs1 / (unsigned)reg_rs2;
+        StatsInst[ENUM_INST_DIVU]++;
+        if (reg_rs2 != 0)
+            reg_rd = (unsigned)reg_rs1 / (unsigned)reg_rs2;
+        else
+            reg_rd = (unsigned)-1;
         pc += 4;        
     }
     else if ((opcode & INST_REM_MASK) == INST_REM)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: rem r%d, r%d, r%d\n", pc, rd, rs1, rs2));
-        reg_rd = (signed)reg_rs1 % (signed)reg_rs2;
+        StatsInst[ENUM_INST_REM]++;
+        if (reg_rs2 != 0)
+            reg_rd = (signed)reg_rs1 % (signed)reg_rs2;
+        else
+            reg_rd = reg_rs1;
         pc += 4;        
     }
     else if ((opcode & INST_REMU_MASK) == INST_REMU)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: remu r%d, r%d, r%d\n", pc, rd, rs1, rs2));
-        reg_rd = (unsigned)reg_rs1 % (unsigned)reg_rs2;
+        StatsInst[ENUM_INST_REMU]++;
+        if (reg_rs2 != 0)
+            reg_rd = (unsigned)reg_rs1 % (unsigned)reg_rs2;
+        else
+            reg_rd = reg_rs1;
         pc += 4;        
     }
     else if ((opcode & INST_SCALL_MASK) == INST_SCALL)
     {
         DPRINTF(LOG_INST,("%08x: scall\n", pc));
+        StatsInst[ENUM_INST_SCALL]++;
         
         Exception(CAUSE_SYSCALL, pc);
 
@@ -710,6 +782,7 @@ void Riscv::Execute(void)
     else if ((opcode & INST_SBREAK_MASK) == INST_SBREAK)
     {
         DPRINTF(LOG_INST,("%08x: sbreak\n", pc));
+        StatsInst[ENUM_INST_SBREAK]++;
 
         Exception(CAUSE_BREAKPOINT, pc);
 
@@ -720,6 +793,7 @@ void Riscv::Execute(void)
     else if ((opcode & INST_SRET_MASK) == INST_SRET)
     {
         DPRINTF(LOG_INST,("%08x: sret\n", pc));
+        StatsInst[ENUM_INST_SRET]++;
 
         // Interrupt enable pop
         csr_sr &= ~SR_EI;
@@ -732,23 +806,42 @@ void Riscv::Execute(void)
         // Return to EPC
         pc          = csr_epc;        
     }
+    else if ((opcode & INST_CSRRW_MASK) == INST_CSRRW)
+    {
+        DPRINTF(LOG_INST,("%08x: csrw r%d, r%d, 0x%x\n", pc, rd, rs1, imm12));
+        StatsInst[ENUM_INST_CSRRW]++;
+        reg_rd = AccessCsr(imm12, reg_rs1, true, true);
+        pc += 4;
+    }    
     else if ((opcode & INST_CSRRS_MASK) == INST_CSRRS)
     {
+        DPRINTF(LOG_INST,("%08x: csrs r%d, r%d, 0x%x\n", pc, rd, rs1, imm12));
+        StatsInst[ENUM_INST_CSRRS]++;
         reg_rd = AccessCsr(imm12, reg_rs1, true, false);
         pc += 4;
     }
     else if ((opcode & INST_CSRRC_MASK) == INST_CSRRC)
     {
+        DPRINTF(LOG_INST,("%08x: csrc r%d, r%d, 0x%x\n", pc, rd, rs1, imm12));
+        StatsInst[ENUM_INST_CSRRC]++;
         reg_rd = AccessCsr(imm12, reg_rs1, false, true);
         pc += 4;
-    }    
+    }
+    else if ((opcode & INST_CSRRWI_MASK) == INST_CSRRWI)
+    {
+        StatsInst[ENUM_INST_CSRRWI]++;
+        reg_rd = AccessCsr(imm12, rs1, true, true);
+        pc += 4;
+    }
     else if ((opcode & INST_CSRRSI_MASK) == INST_CSRRSI)
     {
+        StatsInst[ENUM_INST_CSRRSI]++;
         reg_rd = AccessCsr(imm12, rs1, true, false);
         pc += 4;
     }
     else if ((opcode & INST_CSRRCI_MASK) == INST_CSRRCI)
     {
+        StatsInst[ENUM_INST_CSRRCI]++;
         reg_rd = AccessCsr(imm12, rs1, false, true);
         pc += 4;
     }    

@@ -97,6 +97,125 @@
 //--------------------------------------------------------------------
 // Instructions
 //--------------------------------------------------------------------
+enum eInstructions
+{
+    ENUM_INST_ANDI,
+    ENUM_INST_ADDI,
+    ENUM_INST_SLTI,
+    ENUM_INST_SLTIU,
+    ENUM_INST_ORI,
+    ENUM_INST_XORI,
+    ENUM_INST_SLLI,
+    ENUM_INST_SRLI,
+    ENUM_INST_SRAI,
+    ENUM_INST_LUI,
+    ENUM_INST_AUIPC,
+    ENUM_INST_ADD,
+    ENUM_INST_SUB,
+    ENUM_INST_SLT,
+    ENUM_INST_SLTU,
+    ENUM_INST_XOR,
+    ENUM_INST_OR,
+    ENUM_INST_AND,
+    ENUM_INST_SLL,
+    ENUM_INST_SRL,
+    ENUM_INST_SRA,
+    ENUM_INST_JAL,
+    ENUM_INST_JALR,
+    ENUM_INST_BEQ,
+    ENUM_INST_BNE,
+    ENUM_INST_BLT,
+    ENUM_INST_BGE,
+    ENUM_INST_BLTU,
+    ENUM_INST_BGEU,
+    ENUM_INST_LB,
+    ENUM_INST_LH,
+    ENUM_INST_LW,
+    ENUM_INST_LBU,
+    ENUM_INST_LHU,
+    ENUM_INST_LWU,
+    ENUM_INST_SB,
+    ENUM_INST_SH,
+    ENUM_INST_SW,
+    ENUM_INST_SCALL,
+    ENUM_INST_SBREAK,
+    ENUM_INST_SRET,
+    ENUM_INST_CSRRW,
+    ENUM_INST_CSRRS,
+    ENUM_INST_CSRRC,
+    ENUM_INST_CSRRWI,
+    ENUM_INST_CSRRSI,
+    ENUM_INST_CSRRCI,
+    ENUM_INST_MUL,
+    ENUM_INST_MULH,
+    ENUM_INST_MULHSU,
+    ENUM_INST_MULHU,
+    ENUM_INST_DIV,
+    ENUM_INST_DIVU,
+    ENUM_INST_REM,
+    ENUM_INST_REMU,
+    ENUM_INST_MAX
+};
+
+static const char * inst_names[ENUM_INST_MAX+1] = 
+{
+    [ENUM_INST_ANDI] = "andi",
+    [ENUM_INST_ADDI] = "addi",
+    [ENUM_INST_SLTI] = "slti",
+    [ENUM_INST_SLTIU] = "sltiu",
+    [ENUM_INST_ORI] = "ori",
+    [ENUM_INST_XORI] = "xori",
+    [ENUM_INST_SLLI] = "slli",
+    [ENUM_INST_SRLI] = "srli",
+    [ENUM_INST_SRAI] = "srai",
+    [ENUM_INST_LUI] = "lui",
+    [ENUM_INST_AUIPC] = "auipc",
+    [ENUM_INST_ADD] = "add",
+    [ENUM_INST_SUB] = "sub",
+    [ENUM_INST_SLT] = "slt",
+    [ENUM_INST_SLTU] = "sltu",
+    [ENUM_INST_XOR] = "xor",
+    [ENUM_INST_OR] = "or",
+    [ENUM_INST_AND] = "and",
+    [ENUM_INST_SLL] = "sll",
+    [ENUM_INST_SRL] = "srl",
+    [ENUM_INST_SRA] = "sra",
+    [ENUM_INST_JAL] = "jal",
+    [ENUM_INST_JALR] = "jalr",
+    [ENUM_INST_BEQ] = "beq",
+    [ENUM_INST_BNE] = "bne",
+    [ENUM_INST_BLT] = "blt",
+    [ENUM_INST_BGE] = "bge",
+    [ENUM_INST_BLTU] = "bltu",
+    [ENUM_INST_BGEU] = "bgeu",
+    [ENUM_INST_LB] = "lb",
+    [ENUM_INST_LH] = "lh",
+    [ENUM_INST_LW] = "lw",
+    [ENUM_INST_LBU] = "lbu",
+    [ENUM_INST_LHU] = "lhu",
+    [ENUM_INST_LWU] = "lwu",
+    [ENUM_INST_SB] = "sb",
+    [ENUM_INST_SH] = "sh",
+    [ENUM_INST_SW] = "sw",
+    [ENUM_INST_SCALL] = "scall",
+    [ENUM_INST_SBREAK] = "sbreak",
+    [ENUM_INST_SRET] = "sret",
+    [ENUM_INST_CSRRW] = "csrw",
+    [ENUM_INST_CSRRS] = "csrs",
+    [ENUM_INST_CSRRC] = "csrc",
+    [ENUM_INST_CSRRWI] = "csrwi",
+    [ENUM_INST_CSRRSI] = "csrsi",
+    [ENUM_INST_CSRRCI] = "csrci",
+    [ENUM_INST_MUL] = "mul",
+    [ENUM_INST_MULH] = "mulh",
+    [ENUM_INST_MULHSU] = "mulhsu",
+    [ENUM_INST_MULHU] = "mulhu",
+    [ENUM_INST_DIV] = "div",
+    [ENUM_INST_DIVU] = "divu",
+    [ENUM_INST_REM] = "rem",
+    [ENUM_INST_REMU] = "remu",
+    [ENUM_INST_MAX] = ""
+};
 
 // andi
 #define INST_ANDI 0x7013
@@ -262,6 +381,10 @@
 #define INST_SRET 0x80000073
 #define INST_SRET_MASK 0xffffffff
 
+// csrrw
+#define INST_CSRRW 0x1073
+#define INST_CSRRW_MASK 0x707f
+
 // csrrs
 #define INST_CSRRS 0x2073
 #define INST_CSRRS_MASK 0x707f
@@ -269,6 +392,10 @@
 // csrrc
 #define INST_CSRRC 0x3073
 #define INST_CSRRC_MASK 0x707f
+
+// csrrwi
+#define INST_CSRRWI 0x5073
+#define INST_CSRRWI_MASK 0x707f
 
 // csrrsi
 #define INST_CSRRSI 0x6073
@@ -314,9 +441,13 @@
 // CSR Registers
 //--------------------------------------------------------------------
 #define CSR_EPC         0x502
+#define CSR_EPC_MASK    0xFFFFFFFF
 #define CSR_EVEC        0x508
+#define CSR_EVEC_MASK   0xFFFFFFFF
 #define CSR_CAUSE       0x509
+#define CSR_CAUSE_MASK  0x1F
 #define CSR_STATUS      0x50a
+#define CSR_STATUS_MASK 0xF
 
 //--------------------------------------------------------------------
 // Status Register
