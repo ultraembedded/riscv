@@ -402,6 +402,6 @@ assign stall_mem_o = (wb_lsu_ctrl_q[`LSU_CTRL_LD_OP] !=`LSU_LD_OP_NONE) & ~dmem_
 // Outstanding load dependancy (i.e. load delay slot)
 assign stall_exec_o = ((lsu_ctrl_q[`LSU_CTRL_REG] == reg_rs1_i) & (reg_rs1_i != 5'b0)) |
                       ((lsu_ctrl_q[`LSU_CTRL_REG] == reg_rs2_i) & (reg_rs2_i != 5'b0)) | 
-                      stall_mem_o | dmem_stall_i;
+                      stall_mem_o | (dmem_stb_o & dmem_stall_i);
 
 endmodule
