@@ -1,43 +1,3 @@
-//-----------------------------------------------------------------
-//                     RISC-V ISA Simulator 
-//                            V0.1
-//                     Ultra-Embedded.com
-//                       Copyright 2014
-//
-//                   admin@ultra-embedded.com
-//
-//                       License: BSD
-//-----------------------------------------------------------------
-//
-// Copyright (c) 2014, Ultra-Embedded.com
-// All rights reserved.
-// 
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions 
-// are met:
-//   - Redistributions of source code must retain the above copyright
-//     notice, this list of conditions and the following disclaimer.
-//   - Redistributions in binary form must reproduce the above copyright
-//     notice, this list of conditions and the following disclaimer 
-//     in the documentation and/or other materials provided with the 
-//     distribution.
-//   - Neither the name of the author nor the names of its contributors 
-//     may be used to endorse or promote products derived from this 
-//     software without specific prior written permission.
-// 
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
-// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
-// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
-// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHOR BE 
-// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
-// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
-// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR 
-// BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF 
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF 
-// THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF 
-// SUCH DAMAGE.
-//-----------------------------------------------------------------
 #ifndef __RISCV_ISA_H__
 #define __RISCV_ISA_H__
 
@@ -137,9 +97,9 @@ enum eInstructions
     ENUM_INST_SB,
     ENUM_INST_SH,
     ENUM_INST_SW,
-    ENUM_INST_SCALL,
-    ENUM_INST_SBREAK,
-    ENUM_INST_SRET,
+    ENUM_INST_ECALL,
+    ENUM_INST_EBREAK,
+    ENUM_INST_MRET,
     ENUM_INST_CSRRW,
     ENUM_INST_CSRRS,
     ENUM_INST_CSRRC,
@@ -197,9 +157,9 @@ static const char * inst_names[ENUM_INST_MAX+1] =
     [ENUM_INST_SB] = "sb",
     [ENUM_INST_SH] = "sh",
     [ENUM_INST_SW] = "sw",
-    [ENUM_INST_SCALL] = "scall",
-    [ENUM_INST_SBREAK] = "sbreak",
-    [ENUM_INST_SRET] = "sret",
+    [ENUM_INST_ECALL] = "ecall",
+    [ENUM_INST_EBREAK] = "ebreak",
+    [ENUM_INST_MRET] = "mret",
     [ENUM_INST_CSRRW] = "csrw",
     [ENUM_INST_CSRRS] = "csrs",
     [ENUM_INST_CSRRC] = "csrc",
@@ -369,17 +329,17 @@ static const char * inst_names[ENUM_INST_MAX+1] =
 #define INST_SW 0x2023
 #define INST_SW_MASK 0x707f
 
-// scall
-#define INST_SCALL 0x73
-#define INST_SCALL_MASK 0xffffffff
+// ecall
+#define INST_ECALL 0x73
+#define INST_ECALL_MASK 0xffffffff
 
-// sbreak
-#define INST_SBREAK 0x100073
-#define INST_SBREAK_MASK 0xffffffff
+// ebreak
+#define INST_EBREAK 0x100073
+#define INST_EBREAK_MASK 0xffffffff
 
-// sret
-#define INST_SRET 0x80000073
-#define INST_SRET_MASK 0xffffffff
+// mret
+#define INST_MRET 0x30200073
+#define INST_MRET_MASK 0xffffffff
 
 // csrrw
 #define INST_CSRRW 0x1073
@@ -437,40 +397,109 @@ static const char * inst_names[ENUM_INST_MAX+1] =
 #define INST_REMU 0x2007033
 #define INST_REMU_MASK 0xfe00707f
 
+#define IS_LOAD_INST(a)     (((a) & 0x7F) == 0x03)
+#define IS_STORE_INST(a)    (((a) & 0x7F) == 0x23)
+#define IS_BRANCH_INST(a)   ((((a) & 0x7F) == 0x6f) || \
+                            (((a) & 0x7F) == 0x67) || \
+                            (((a) & 0x7F) == 0x63) || \
+                            (((a) & INST_ECALL_MASK) == INST_ECALL) || \
+                            (((a) & INST_EBREAK_MASK) == INST_EBREAK) || \
+                            (((a) & INST_MRET_MASK) == INST_MRET))
+
+#define IS_ALU_3R_INST(a)           (((a) & 0x7F) == 0x33)
+#define IS_ALU_2RI_INST(a)          ((((a) & 0x7F) == 0x13) || (((a) & 0x7F) == 0x67))
+#define IS_COND_BRANCH_2RI_INST(a)  (((a) & 0x7F) == 0x63)
+#define IS_RD_I_INST(a)     (((a) & INST_JAL_MASK) == INST_JAL) || \
+                            (((a) & INST_LUI_MASK) == INST_LUI) || \
+                            (((a) & INST_AUIPC_MASK) == INST_AUIPC))
+
+
+//--------------------------------------------------------------------
+// Privilege levels
+//--------------------------------------------------------------------
+#define PRIV_USER         0
+#define PRIV_SUPER        1
+#define PRIV_MACHINE      3
+
+//--------------------------------------------------------------------
+// IRQ Numbers
+//--------------------------------------------------------------------
+#define IRQ_SOFT          3
+#define IRQ_TIMER         7
+#define IRQ_EXT           11
+#define IRQ_MIN           (IRQ_SOFT)
+#define IRQ_MAX           (IRQ_EXT + 1)
+#define IRQ_MASK          ((1 << IRQ_SOFT) | (1 << IRQ_TIMER) | (1 << IRQ_EXT))
+
 //--------------------------------------------------------------------
 // CSR Registers
 //--------------------------------------------------------------------
-#define CSR_EPC         0x502
-#define CSR_EPC_MASK    0xFFFFFFFF
-#define CSR_EVEC        0x508
-#define CSR_EVEC_MASK   0xFFFFFFFF
-#define CSR_CAUSE       0x509
-#define CSR_CAUSE_MASK  0x1F
-#define CSR_STATUS      0x50a
-#define CSR_STATUS_MASK 0xF
+#define CSR_MSTATUS       0x300
+#define CSR_MSTATUS_MASK  0xFFFFFFFF
+//#define CSR_MISA          0x301
+//#define CSR_MISA_MASK     0xFFFFFFFF
+//#define CSR_MEDELEG       0x302
+//#define CSR_MEDELEG_MASK  0xFFFFFFFF
+//#define CSR_MIDELEG       0x303
+//#define CSR_MIDELEG_MASK  0xFFFFFFFF
+#define CSR_MIE           0x304
+#define CSR_MIE_MASK      IRQ_MASK
+#define CSR_MTVEC         0x305
+#define CSR_MTVEC_MASK    0xFFFFFFFF
+#define CSR_MSCRATCH      0x340
+#define CSR_MSCRATCH_MASK 0xFFFFFFFF
+    #define CSR_SIM_CTRL_EXIT (0 << 24)
+    #define CSR_SIM_CTRL_PUTC (1 << 24)
+    #define CSR_SIM_CTRL_GETC (2 << 24)
+#define CSR_MEPC          0x341
+#define CSR_MEPC_MASK     0xFFFFFFFF
+#define CSR_MCAUSE        0x342
+#define CSR_MCAUSE_MASK   0x8000000F
+//#define CSR_MBADADDR      0x343
+//#define CSR_MBADADDR_MASK 0xFFFFFFFF
+#define CSR_MIP           0x344
+#define CSR_MIP_MASK      IRQ_MASK
+#define CSR_MTIME         0xc01
+#define CSR_MTIME_MASK    0xFFFFFFFF
+
 
 //--------------------------------------------------------------------
 // Status Register
 //--------------------------------------------------------------------
-#define SR_S     0x00000001
-#define SR_PS    0x00000002
-#define SR_EI    0x00000004
-#define SR_PEI   0x00000008
+//#define SR_UIE        (1 << 0)
+//#define SR_SIE        (1 << 1)
+#define SR_MIE          (1 << 3)
+//#define SR_UPIE       (1 << 4)
+//#define SR_SPIE       (1 << 5)
+#define SR_MPIE         (1 << 7)
+
+#define SR_MPP_SHIFT    11
+#define SR_MPP_MASK     0x3
+#define SR_MPP          (SR_MPP_MASK  << SR_MPP_SHIFT)
+#define SR_MPP_U        (PRIV_USER    << SR_MPP_SHIFT)
+#define SR_MPP_M        (PRIV_MACHINE << SR_MPP_SHIFT)
+
+#define SR_IP_MSIP      (1 << IRQ_SOFT)
+#define SR_IP_MTIP      (1 << IRQ_TIMER)
+#define SR_IP_MEIP      (1 << IRQ_EXT)
 
 //--------------------------------------------------------------------
 // Exception Causes
 //--------------------------------------------------------------------
-#define CAUSE_MISALIGNED_FETCH          0x0
-#define CAUSE_FAULT_FETCH               0x1
-#define CAUSE_ILLEGAL_INSTRUCTION       0x2
-#define CAUSE_PRIVILEGED_INSTRUCTION    0x3
-#define CAUSE_SYSCALL                   0x6
-#define CAUSE_BREAKPOINT                0x7
-#define CAUSE_MISALIGNED_LOAD           0x8
-#define CAUSE_MISALIGNED_STORE          0x9
-#define CAUSE_FAULT_LOAD                0xa
-#define CAUSE_FAULT_STORE               0xb
-#define CAUSE_INTERRUPT                 0x10
+#define MCAUSE_INT                      31
+#define MCAUSE_MISALIGNED_FETCH         ((0 << MCAUSE_INT) | 0)
+#define MCAUSE_FAULT_FETCH              ((0 << MCAUSE_INT) | 1)
+#define MCAUSE_ILLEGAL_INSTRUCTION      ((0 << MCAUSE_INT) | 2)
+#define MCAUSE_BREAKPOINT               ((0 << MCAUSE_INT) | 3)
+#define MCAUSE_MISALIGNED_LOAD          ((0 << MCAUSE_INT) | 4)
+#define MCAUSE_FAULT_LOAD               ((0 << MCAUSE_INT) | 5)
+#define MCAUSE_MISALIGNED_STORE         ((0 << MCAUSE_INT) | 6)
+#define MCAUSE_FAULT_STORE              ((0 << MCAUSE_INT) | 7)
+#define MCAUSE_ECALL_U                  ((0 << MCAUSE_INT) | 8)
+#define MCAUSE_PAGE_FAULT_INST          ((0 << MCAUSE_INT) | 12)
+#define MCAUSE_PAGE_FAULT_LOAD          ((0 << MCAUSE_INT) | 13)
+#define MCAUSE_PAGE_FAULT_STORE         ((0 << MCAUSE_INT) | 15)
+#define MCAUSE_INTERRUPT                (1 << MCAUSE_INT)
 
 #endif
 

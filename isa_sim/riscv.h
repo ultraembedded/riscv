@@ -43,6 +43,7 @@
 
 #include <stdint.h>
 #include "riscv_isa.h"
+#include "cosim_api.h"
 #include "memory.h"
 
 //--------------------------------------------------------------------
@@ -52,6 +53,7 @@
 #define LOG_OPCODES         (1 << 1)
 #define LOG_REGISTERS       (1 << 2)
 #define LOG_MEM             (1 << 3)
+#define LOG_MACH_TRACE      (1 << 4)
 
 #define MAX_MEM_REGIONS     8
 
@@ -69,39 +71,64 @@ enum eStats
 };
 
 //--------------------------------------------------------------------
+// Abstract interface for stats
+//--------------------------------------------------------------------
+class StatsInterface
+{
+public:  
+    virtual void        Reset(void) = 0;
+    virtual void        Execute(uint32_t pc, uint32_t opcode) = 0;
+    virtual void        Print(void) = 0;
+};
+
+//--------------------------------------------------------------------
 // Class
 //--------------------------------------------------------------------
-class Riscv
+class Riscv: public cosim_cpu_api, public cosim_mem_api
 {
 public:
+                        Riscv();
                         Riscv(uint32_t baseAddr, uint32_t len);
     virtual             ~Riscv();
 
-    bool                CreateMemory(uint32_t baseAddr, uint32_t len);
+    bool                create_memory(uint32_t addr, uint32_t size, uint8_t *mem = NULL);
     bool                AttachMemory(Memory *memory, uint32_t baseAddr, uint32_t len);
 
     bool                LoadMem(uint32_t startAddr, uint8_t *data, int len);
 
-    void                Reset(uint32_t start_addr);
-    bool                Step(void);
+    bool                valid_addr(uint32_t address);
+    void                write(uint32_t address, uint8_t data);
+    uint8_t             read(uint32_t address);
 
-    void                Interrupt(void);
+    void                reset(uint32_t start_addr);
+    uint32_t            get_opcode(uint32_t pc);
+    void                step(void);
 
-    bool                GetFault(void) { return Fault; }
-    bool                GetBreak(void) { return Break; }
-    uint32_t            GetRegister(int r) { return (r < REGISTERS) ? r_gpr[r] : 0; }
-    uint32_t            GetPC(void) { return r_pc; }
-    uint32_t            GetOpcode(uint32_t address);
+    void                set_interrupt(int irq);
 
-    void                EnableTrace(uint32_t mask)  { Trace = mask; }
+    bool                get_fault(void) { return Fault; }
+    bool                get_stopped(void) { return Break; }
+    bool                get_reg_valid(int r) { return true; }
+    uint32_t            get_register(int r) { return (r < REGISTERS) ? r_gpr[r] : 0; }
+
+    uint32_t            get_pc(void) { return r_pc_x; }
+    uint32_t            get_opcode(void) { return get_opcode(r_pc_x); }
+    int                 get_num_reg(void) { return REGISTERS; }
+
+    void                set_register(int r, uint32_t val) { r_gpr[r] = val; }
+
+    void                enable_trace(uint32_t mask)  { Trace = mask; }
+    void                EnableInstStats(void) { StatsInstStatsEnable = true; }
+
+    void                SetStatsInterface(StatsInterface *stats) { StatsIf = stats; }
 
     void                ResetStats(void);
     void                DumpStats(void);
 
 protected:  
     void                Execute(void);
-    uint32_t            Load(uint32_t address, int width, bool signedLoad);
-    void                Store(uint32_t address, uint32_t data, int width);
+    uint32_t            Load(uint32_t pc, uint32_t address, int width, bool signedLoad);
+    void                Store(uint32_t pc, uint32_t address, uint32_t data, int width);
     uint32_t            AccessCsr(uint32_t address, uint32_t data, bool set, bool clr);
     void                Exception(uint32_t cause, uint32_t pc);
     
@@ -110,10 +137,15 @@ private:
     // CPU Registers
     uint32_t            r_gpr[REGISTERS];
     uint32_t            r_pc;
+    uint32_t            r_pc_x;
     uint32_t            csr_epc;
     uint32_t            csr_cause;
     uint32_t            csr_sr;
     uint32_t            csr_evec;
+    uint32_t            csr_ie;
+    uint32_t            csr_ip;
+    uint32_t            csr_time;
+    uint32_t            csr_timecmp;
 
     // Memory
     Memory             *Mem[MAX_MEM_REGIONS];
@@ -121,15 +153,17 @@ private:
     uint32_t            MemSize[MAX_MEM_REGIONS];
     int                 MemRegions;
 
+
     // Status
     bool                Fault;
     bool                Break;
     int                 Trace;
-    bool                InterruptPending;
 
     // Stats
     uint32_t            Stats[STATS_MAX];
     uint32_t            StatsInst[ENUM_INST_MAX];
+    bool                StatsInstStatsEnable;
+    StatsInterface     *StatsIf;
 };
 
 #endif

@@ -1,8 +1,8 @@
 //-----------------------------------------------------------------
 //                     RISC-V ISA Simulator 
-//                            V0.1
+//                            V1.0
 //                     Ultra-Embedded.com
-//                       Copyright 2014
+//                     Copyright 2014-2017
 //
 //                   admin@ultra-embedded.com
 //
@@ -65,10 +65,15 @@ public:
         Mem = new uint32_t[(size + 3)/4];
         Size = size;
     }
+    SimpleMemory(uint8_t * buf, int size)
+    {
+        Mem = (uint32_t*)buf;
+        Size = size;
+    }    
 
     virtual void Reset(void)
     {
-        memset(Mem, 0, (Size + 3)/4);
+        memset(Mem, 0, Size);
     }
 
     virtual uint32_t Load(uint32_t address, int width, bool signedLoad)
