@@ -1,0 +1,149 @@
+//-----------------------------------------------------------------
+//                         RISC-V Core
+//                            V0.5
+//                     Ultra-Embedded.com
+//                     Copyright 2014-2017
+//
+//                   admin@ultra-embedded.com
+//
+//                       License: BSD
+//-----------------------------------------------------------------
+//
+// Copyright (c) 2014, Ultra-Embedded.com
+// All rights reserved.
+// 
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions 
+// are met:
+//   - Redistributions of source code must retain the above copyright
+//     notice, this list of conditions and the following disclaimer.
+//   - Redistributions in binary form must reproduce the above copyright
+//     notice, this list of conditions and the following disclaimer 
+//     in the documentation and/or other materials provided with the 
+//     distribution.
+//   - Neither the name of the author nor the names of its contributors 
+//     may be used to endorse or promote products derived from this 
+//     software without specific prior written permission.
+// 
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
+// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHOR BE 
+// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
+// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
+// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR 
+// BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF 
+// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF 
+// THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF 
+// SUCH DAMAGE.
+//-----------------------------------------------------------------
+module riscv_fetch
+(
+    // Inputs
+     input           clk_i
+    ,input           rst_i
+    ,input           fetch_branch_i
+    ,input  [ 31:0]  fetch_branch_pc_i
+    ,input           fetch_accept_i
+    ,input           icache_accept_i
+    ,input           icache_valid_i
+    ,input  [ 31:0]  icache_inst_i
+    ,input  [ 31:0]  icache_inst_pc_i
+
+    // Outputs
+    ,output          fetch_valid_o
+    ,output [ 31:0]  fetch_instr_o
+    ,output [ 31:0]  fetch_pc_o
+    ,output          icache_rd_o
+    ,output          icache_flush_o
+    ,output          icache_invalidate_o
+    ,output [ 31:0]  icache_pc_o
+);
+
+//-------------------------------------------------------------
+// Registers / Wires
+//-------------------------------------------------------------
+reg [31:0]  fetch_pc_q;
+
+reg [31:0]  branch_pc_q;
+reg         branch_valid_q;
+
+reg         icache_fetch_q;
+
+reg [63:0]  skid_buffer_q;
+reg         skid_valid_q;
+
+wire        icache_busy_w =  icache_fetch_q && !icache_valid_i;
+wire        stall_w       = !fetch_accept_i || icache_busy_w || !icache_accept_i;
+
+wire        branch_w      = branch_valid_q || fetch_branch_i;
+wire [31:0] branch_pc_w   = (branch_valid_q & !fetch_branch_i) ? branch_pc_q : fetch_branch_pc_i;
+
+//-------------------------------------------------------------
+// Sequential
+//-------------------------------------------------------------
+always @ (posedge clk_i or posedge rst_i)
+if (rst_i)
+begin
+    fetch_pc_q     <= 32'b0;
+
+    branch_pc_q    <= 32'b0;
+    branch_valid_q <= 1'b0;
+
+    icache_fetch_q <= 1'b0;
+
+    skid_buffer_q  <= 64'b0;
+    skid_valid_q   <= 1'b0;
+end
+else
+begin
+    // Branch request skid buffer
+    if (stall_w)
+    begin
+        branch_valid_q <= branch_w;
+        branch_pc_q    <= branch_pc_w;
+    end
+    else
+    begin
+        branch_valid_q <= 1'b0;
+        branch_pc_q    <= 32'b0;
+    end
+
+    // NPC
+    if (!stall_w)
+        fetch_pc_q <= icache_pc_o + 32'd4;
+
+    // Instruction output back-pressured - hold in skid buffer
+    if (fetch_valid_o && !fetch_accept_i)
+    begin
+        skid_valid_q  <= 1'b1;
+        skid_buffer_q <= {fetch_pc_o, fetch_instr_o};
+    end
+    else
+    begin
+        skid_valid_q  <= 1'b0;
+        skid_buffer_q <= 64'b0;
+    end
+
+    // ICACHE fetch tracking
+    if (icache_rd_o && icache_accept_i)
+        icache_fetch_q <= 1'b1;
+    else if (icache_valid_i)
+        icache_fetch_q <= 1'b0;
+
+end
+
+//-------------------------------------------------------------
+// Outputs
+//-------------------------------------------------------------
+assign icache_rd_o         = !stall_w;
+assign icache_pc_o         = branch_w ? branch_pc_w : fetch_pc_q;
+assign icache_flush_o      = 1'b0;
+assign icache_invalidate_o = 1'b0;
+
+assign fetch_valid_o = (icache_valid_i || skid_valid_q) & !branch_w;
+assign fetch_pc_o    = skid_valid_q ? skid_buffer_q[63:32] : icache_inst_pc_i;
+assign fetch_instr_o = skid_valid_q ? skid_buffer_q[31:0]  : icache_inst_i;
+
+endmodule
