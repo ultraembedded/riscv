@@ -1,5 +1,7 @@
 # RISC-V Core
 
+Github: http://github.com/ultraembedded/riscv
+
 A simple RISC-V core written in Verilog and an instruction set simulator supporting RV32I.
 This core has been tested against a co-simulation model, and exercised on FPGA.
 
