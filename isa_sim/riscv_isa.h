@@ -432,6 +432,17 @@ static const char * inst_names[ENUM_INST_MAX+1] =
 #define IRQ_MASK          ((1 << IRQ_SOFT) | (1 << IRQ_TIMER) | (1 << IRQ_EXT))
 
 //--------------------------------------------------------------------
+// CSR Registers - Simulation control
+//--------------------------------------------------------------------
+#define CSR_DSCRATCH       0x7b2
+#define CSR_DSCRATCH_MASK  0xFFFFFFFF
+    #define CSR_SIM_CTRL_EXIT  (0 << 24)
+    #define CSR_SIM_CTRL_PUTC  (1 << 24)
+    #define CSR_SIM_CTRL_GETC  (2 << 24)
+    #define CSR_SIM_CTRL_TRACE (4 << 24)
+    #define CSR_SIM_PRINTF     (5 << 24)
+
+//--------------------------------------------------------------------
 // CSR Registers
 //--------------------------------------------------------------------
 #define CSR_MSTATUS       0x300
@@ -448,9 +459,6 @@ static const char * inst_names[ENUM_INST_MAX+1] =
 #define CSR_MTVEC_MASK    0xFFFFFFFF
 #define CSR_MSCRATCH      0x340
 #define CSR_MSCRATCH_MASK 0xFFFFFFFF
-    #define CSR_SIM_CTRL_EXIT (0 << 24)
-    #define CSR_SIM_CTRL_PUTC (1 << 24)
-    #define CSR_SIM_CTRL_GETC (2 << 24)
 #define CSR_MEPC          0x341
 #define CSR_MEPC_MASK     0xFFFFFFFF
 #define CSR_MCAUSE        0x342

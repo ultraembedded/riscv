@@ -315,6 +315,15 @@
 `define IRQ_MASK          ((1 << `IRQ_SOFT) | (1 << `IRQ_TIMER) | (1 << `IRQ_EXT))
 
 //--------------------------------------------------------------------
+// CSR Registers - Simulation control
+//--------------------------------------------------------------------
+`define CSR_DSCRATCH       12'h7b2
+`define CSR_DSCRATCH_MASK  32'hFFFFFFFF
+    `define CSR_SIM_CTRL_EXIT (0 << 24)
+    `define CSR_SIM_CTRL_PUTC (1 << 24)
+    `define CSR_SIM_CTRL_GETC (2 << 24)
+
+//--------------------------------------------------------------------
 // CSR Registers
 //--------------------------------------------------------------------
 `define CSR_MSTATUS       12'h300
@@ -325,9 +334,6 @@
 `define CSR_MTVEC_MASK    32'hFFFFFFFF
 `define CSR_MSCRATCH      12'h340
 `define CSR_MSCRATCH_MASK 32'hFFFFFFFF
-    `define CSR_SIM_CTRL_EXIT (0 << 24)
-    `define CSR_SIM_CTRL_PUTC (1 << 24)
-    `define CSR_SIM_CTRL_GETC (2 << 24)
 `define CSR_MEPC          12'h341
 `define CSR_MEPC_MASK     32'hFFFFFFFF
 `define CSR_MCAUSE        12'h342
@@ -336,6 +342,18 @@
 `define CSR_MIP_MASK      `IRQ_MASK
 `define CSR_MTIME         12'hc01
 `define CSR_MTIME_MASK    32'hFFFFFFFF
+`define CSR_MHARTID       12'hF14
+`define CSR_MHARTID_MASK  32'hFFFFFFFF
+
+//--------------------------------------------------------------------
+// CSR Registers - DCACHE control
+//--------------------------------------------------------------------
+`define CSR_DFLUSH            12'h3a0 // pmpcfg0
+`define CSR_DFLUSH_MASK       32'hFFFFFFFF
+`define CSR_DWRITEBACK        12'h3a1 // pmpcfg1
+`define CSR_DWRITEBACK_MASK   32'hFFFFFFFF
+`define CSR_DINVALIDATE       12'h3a2 // pmpcfg2
+`define CSR_DINVALIDATE_MASK  32'hFFFFFFFF
 
 //--------------------------------------------------------------------
 // Status Register

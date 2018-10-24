@@ -1,8 +1,8 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.5
+//                            V0.6
 //                     Ultra-Embedded.com
-//                     Copyright 2014-2017
+//                     Copyright 2014-2018
 //
 //                   admin@ultra-embedded.com
 //
@@ -64,6 +64,11 @@ module riscv_exec
     ,output          stall_o
 );
 
+
+
+//-----------------------------------------------------------------
+// Includes
+//-----------------------------------------------------------------
 `include "riscv_defs.v"
 
 //-------------------------------------------------------------
@@ -82,10 +87,10 @@ reg [31:0]  alu_input_b_q;
 riscv_alu
 u_alu
 (
-    .op_i(alu_func_q),
-    .a_i(alu_input_a_q),
-    .b_i(alu_input_b_q),
-    .p_o(writeback_value_o)
+    .alu_op_i(alu_func_q),
+    .alu_a_i(alu_input_a_q),
+    .alu_b_i(alu_input_b_q),
+    .alu_p_o(writeback_value_o)
 );
 
 //-------------------------------------------------------------
@@ -369,11 +374,6 @@ begin
         branch_r        = 1'b1;
         branch_target_r = csr_epc_i;
     end
-    else if (opcode_instr_i[`ENUM_INST_INTR])
-    begin
-        branch_r        = 1'b1;
-        branch_target_r = csr_evec_i;
-    end
 end
 
 assign branch_request_o = branch_r && (opcode_valid_i || reset_q);
@@ -447,5 +447,6 @@ begin
 end
 endfunction
 `endif
+
 
 endmodule

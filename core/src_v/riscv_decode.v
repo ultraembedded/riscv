@@ -1,8 +1,8 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.5
+//                            V0.6
 //                     Ultra-Embedded.com
-//                     Copyright 2014-2017
+//                     Copyright 2014-2018
 //
 //                   admin@ultra-embedded.com
 //
@@ -46,6 +46,7 @@ module riscv_decode
     ,input           fetch_valid_i
     ,input  [ 31:0]  fetch_instr_i
     ,input  [ 31:0]  fetch_pc_i
+    ,input           fetch_fault_i
     ,input           branch_request_i
     ,input  [ 31:0]  branch_pc_i
     ,input  [  4:0]  writeback_exec_idx_i
@@ -54,10 +55,14 @@ module riscv_decode
     ,input  [ 31:0]  writeback_mem_value_i
     ,input  [  4:0]  writeback_csr_idx_i
     ,input  [ 31:0]  writeback_csr_value_i
+    ,input  [  4:0]  writeback_muldiv_idx_i
+    ,input  [ 31:0]  writeback_muldiv_value_i
     ,input           exec_stall_i
     ,input           lsu_stall_i
     ,input           csr_stall_i
+    ,input           muldiv_stall_i
     ,input           take_interrupt_i
+    ,input  [ 31:0]  csr_evec_i
 
     // Outputs
     ,output          fetch_branch_o
@@ -66,6 +71,7 @@ module riscv_decode
     ,output          exec_opcode_valid_o
     ,output          lsu_opcode_valid_o
     ,output          csr_opcode_valid_o
+    ,output          muldiv_opcode_valid_o
     ,output [ 55:0]  opcode_instr_o
     ,output [ 31:0]  opcode_opcode_o
     ,output [ 31:0]  opcode_pc_o
@@ -74,8 +80,14 @@ module riscv_decode
     ,output [  4:0]  opcode_rb_idx_o
     ,output [ 31:0]  opcode_ra_operand_o
     ,output [ 31:0]  opcode_rb_operand_o
+    ,output          fault_fetch_o
 );
 
+
+
+//-----------------------------------------------------------------
+// Includes
+//-----------------------------------------------------------------
 `include "riscv_defs.v"
 
 //-------------------------------------------------------------
@@ -84,15 +96,20 @@ module riscv_decode
 reg         valid_q;
 reg [31:0]  pc_q;
 reg [31:0]  inst_q;
+reg         fault_fetch_q;
 
 reg [31:0]  scoreboard_q;
 reg         stall_scoreboard_r;
-reg         intr_taken_q;
+reg         irq_pending_q;
+reg         irq_request_q;
+reg         irq_inst_q;
 
 wire [31:0] ra_value_w;
 wire [31:0] rb_value_w;
 
-wire        stall_input_w = stall_scoreboard_r || exec_stall_i || lsu_stall_i || csr_stall_i;
+wire        stall_input_w = stall_scoreboard_r || exec_stall_i || lsu_stall_i || csr_stall_i || muldiv_stall_i;
+
+wire        take_irq_w    = take_interrupt_i & !irq_pending_q && !irq_inst_q;
 
 //-------------------------------------------------------------
 // Instances
@@ -102,12 +119,18 @@ u_regfile
 (
     .clk_i(clk_i),
     .rst_i(rst_i),
+
+    // Write ports
     .rd0_i(writeback_exec_idx_i),
     .rd0_value_i(writeback_exec_value_i),
     .rd1_i(writeback_mem_idx_i),
     .rd1_value_i(writeback_mem_value_i),
     .rd2_i(writeback_csr_idx_i),
     .rd2_value_i(writeback_csr_value_i),
+    .rd3_i(writeback_muldiv_idx_i),
+    .rd3_value_i(writeback_muldiv_value_i),
+
+    // Read ports
     .ra_i(opcode_ra_idx_o),
     .rb_i(opcode_rb_idx_o),
     .ra_value_o(ra_value_w),
@@ -123,32 +146,58 @@ begin
     valid_q       <= 1'b0;
     pc_q          <= 32'b0;
     inst_q        <= 32'b0;
-    intr_taken_q  <= 1'b0;
+    irq_pending_q <= 1'b0;
+    fault_fetch_q <= 1'b0;
+    irq_request_q <= 1'b0;
+    irq_inst_q    <= 1'b0;
 end
 else
 begin
-    // Take interrupt
-    if (!stall_input_w && fetch_valid_i && take_interrupt_i && !intr_taken_q)
-    begin
-        if (branch_request_i)
-            pc_q <= branch_pc_i;
-        else
-            pc_q <= fetch_pc_i;
+    irq_request_q <= 1'b0;
 
-        valid_q      <= 1'b1;
-        inst_q       <= 32'b0;
-        intr_taken_q <= 1'b1;
+    // Interrupt request (from exec stage)
+    if (take_irq_w)
+    begin
+        // Interrupt in-progress
+        irq_pending_q <= 1'b1;
+
+        // Invalidate current instruction (regardless of stall)
+        valid_q       <= 1'b0;
+        inst_q        <= 32'b0;
+
+        // Branch - exec stage branch was missed due to IRQ, EPC should be branch target
+        if (branch_request_i)
+            pc_q      <= branch_pc_i;
+        // Not stalled / branching, return address is next PC which we just ignored
+        else if (!stall_input_w)
+            pc_q      <= pc_q + 32'd4;
+        // Stalled, replay current PC later (EPC = unexecuted current)
+        // Else: pc_q <= pc_q;
+    end
+    // Insertion of IRQ pseudo instruction / IRQ branch request
+    else if (irq_pending_q)
+    begin
+        irq_pending_q <= 1'b0;
+
+        // Branch to ISR vector
+        irq_request_q <= 1'b1;
+
+        // Insert psuedo ISR instruction to modify CSR state
+        valid_q       <= 1'b1;
+        inst_q        <= 32'b0;
+        irq_inst_q    <= 1'b1;
     end
     // Normal operation
     else if (!stall_input_w || branch_request_i)
     begin
-        valid_q      <= fetch_valid_i && !branch_request_i;
-        pc_q         <= fetch_pc_i;
-        inst_q       <= fetch_instr_i;
-        intr_taken_q <= 1'b0;
+        valid_q       <= fetch_valid_i && !branch_request_i && !irq_request_q;
+        pc_q          <= fetch_valid_i ? fetch_pc_i : pc_q;
+        inst_q        <= fetch_instr_i;
+        fault_fetch_q <= fetch_fault_i;
+        irq_inst_q    <= 1'b0;
     end
 end
-    
+
 //-------------------------------------------------------------
 // Scoreboard Register
 //-------------------------------------------------------------
@@ -165,21 +214,30 @@ wire sb_alloc_w = (opcode_instr_o[`ENUM_INST_LB]     ||
                    opcode_instr_o[`ENUM_INST_CSRRC]  ||
                    opcode_instr_o[`ENUM_INST_CSRRWI] ||
                    opcode_instr_o[`ENUM_INST_CSRRSI] ||
-                   opcode_instr_o[`ENUM_INST_CSRRCI] );
-
+                   opcode_instr_o[`ENUM_INST_CSRRCI] ||
+                   opcode_instr_o[`ENUM_INST_MUL]    || 
+                   opcode_instr_o[`ENUM_INST_MULH]   ||
+                   opcode_instr_o[`ENUM_INST_MULHSU] ||
+                   opcode_instr_o[`ENUM_INST_MULHU]  ||
+                   opcode_instr_o[`ENUM_INST_DIV]    ||
+                   opcode_instr_o[`ENUM_INST_DIVU]   ||
+                   opcode_instr_o[`ENUM_INST_REM]    ||
+                   opcode_instr_o[`ENUM_INST_REMU] );
 always @ *
 begin
     scoreboard_r = scoreboard_q;
 
+    scoreboard_r[writeback_mem_idx_i]    = 1'b0;
+
     // Allocate register in scoreboard
-    if (sb_alloc_w && exec_opcode_valid_o && lsu_opcode_valid_o && csr_opcode_valid_o)
+    if (sb_alloc_w && exec_opcode_valid_o && lsu_opcode_valid_o && csr_opcode_valid_o && muldiv_opcode_valid_o)
     begin
         scoreboard_r[opcode_rd_idx_o] = 1'b1;
     end
 
-    // Release register on Load / CSR completion
-    scoreboard_r[writeback_mem_idx_i] = 1'b0;
-    scoreboard_r[writeback_csr_idx_i] = 1'b0;
+    // Release register on Load / CSR completion    
+    scoreboard_r[writeback_csr_idx_i]    = 1'b0;
+    scoreboard_r[writeback_muldiv_idx_i] = 1'b0;
 end
 
 always @ (posedge clk_i or posedge rst_i)
@@ -238,7 +296,15 @@ assign opcode_instr_o[`ENUM_INST_CSRRC]  = ((inst_q & `INST_CSRRC_MASK) == `INST
 assign opcode_instr_o[`ENUM_INST_CSRRWI] = ((inst_q & `INST_CSRRWI_MASK) == `INST_CSRRWI); // csrrwi
 assign opcode_instr_o[`ENUM_INST_CSRRSI] = ((inst_q & `INST_CSRRSI_MASK) == `INST_CSRRSI); // csrrsi
 assign opcode_instr_o[`ENUM_INST_CSRRCI] = ((inst_q & `INST_CSRRCI_MASK) == `INST_CSRRCI); // csrrci
-assign opcode_instr_o[`ENUM_INST_INTR]   = intr_taken_q;
+assign opcode_instr_o[`ENUM_INST_MUL]    = ((inst_q & `INST_MUL_MASK) == `INST_MUL);       // mul
+assign opcode_instr_o[`ENUM_INST_MULH]   = ((inst_q & `INST_MULH_MASK) == `INST_MULH);     // mulh
+assign opcode_instr_o[`ENUM_INST_MULHSU] = ((inst_q & `INST_MULHSU_MASK) == `INST_MULHSU); // mulhsu
+assign opcode_instr_o[`ENUM_INST_MULHU]  = ((inst_q & `INST_MULHU_MASK) == `INST_MULHU);   // mulhu
+assign opcode_instr_o[`ENUM_INST_DIV]    = ((inst_q & `INST_DIV_MASK) == `INST_DIV);       // div
+assign opcode_instr_o[`ENUM_INST_DIVU]   = ((inst_q & `INST_DIVU_MASK) == `INST_DIVU);     // divu
+assign opcode_instr_o[`ENUM_INST_REM]    = ((inst_q & `INST_REM_MASK) == `INST_REM);       // rem
+assign opcode_instr_o[`ENUM_INST_REMU]   = ((inst_q & `INST_REMU_MASK) == `INST_REMU);     // remu
+assign opcode_instr_o[`ENUM_INST_INTR]   = irq_inst_q;
 
 // Decode operands
 assign opcode_pc_o     = pc_q;
@@ -258,12 +324,18 @@ begin
     // Bypass: Exec
     if (writeback_exec_idx_i != 5'd0 && writeback_exec_idx_i == opcode_ra_idx_o)
         opcode_ra_operand_r = writeback_exec_value_i;
+    // Bypass: Mem
+    else if (writeback_mem_idx_i != 5'd0 && writeback_mem_idx_i == opcode_ra_idx_o)
+        opcode_ra_operand_r = writeback_mem_value_i;
     else
         opcode_ra_operand_r = ra_value_w;
 
     // Bypass: Exec
     if (writeback_exec_idx_i != 5'd0 && writeback_exec_idx_i == opcode_rb_idx_o)
         opcode_rb_operand_r = writeback_exec_value_i;
+    // Bypass: Mem
+    else if (writeback_mem_idx_i != 5'd0 && writeback_mem_idx_i == opcode_rb_idx_o)
+        opcode_rb_operand_r = writeback_mem_value_i;
     else
         opcode_rb_operand_r = rb_value_w;
 end
@@ -274,33 +346,48 @@ assign opcode_rb_operand_o = opcode_rb_operand_r;
 //-------------------------------------------------------------
 // Stall logic
 //-------------------------------------------------------------
-reg opcode_valid;
+reg        opcode_valid_r;
+reg [31:0] current_scoreboard_r;
+
 always @ *
 begin
-    opcode_valid       = valid_q;
-    stall_scoreboard_r = 1'b0;
+    opcode_valid_r       = valid_q;
+    stall_scoreboard_r   = 1'b0;
+    current_scoreboard_r = scoreboard_q;
+
+    // Mem writeback bypass
+    current_scoreboard_r[writeback_mem_idx_i] = 1'b0;
 
     // Detect dependancy on the LSU/CSR scoreboard
-    if (scoreboard_q[opcode_ra_idx_o] || 
-        scoreboard_q[opcode_rb_idx_o] ||
-        scoreboard_q[opcode_rd_idx_o])
+    if (current_scoreboard_r[opcode_ra_idx_o] || 
+        current_scoreboard_r[opcode_rb_idx_o] ||
+        current_scoreboard_r[opcode_rd_idx_o])
     begin
         stall_scoreboard_r = 1'b1;
-        opcode_valid       = 1'b0;
+        opcode_valid_r     = 1'b0;
     end
 end
 
 // Opcode valid flags to the various execution units
-assign exec_opcode_valid_o = opcode_valid && !lsu_stall_i  && !csr_stall_i;
-assign lsu_opcode_valid_o  = opcode_valid && !exec_stall_i && !csr_stall_i;
-assign csr_opcode_valid_o  = opcode_valid && !exec_stall_i && !lsu_stall_i;
+assign exec_opcode_valid_o    = opcode_valid_r && !lsu_stall_i  && !csr_stall_i && !muldiv_stall_i;
+assign lsu_opcode_valid_o     = opcode_valid_r && !exec_stall_i && !csr_stall_i && !muldiv_stall_i;
+assign csr_opcode_valid_o     = opcode_valid_r && !exec_stall_i && !lsu_stall_i && !muldiv_stall_i;
+assign muldiv_opcode_valid_o  = opcode_valid_r && !exec_stall_i && !lsu_stall_i && !csr_stall_i;
 
 //-------------------------------------------------------------
 // Fetch output
 //-------------------------------------------------------------
-assign fetch_branch_o    = branch_request_i;
-assign fetch_branch_pc_o = branch_pc_i;
-assign fetch_accept_o    = !exec_stall_i && !stall_scoreboard_r && !lsu_stall_i && !csr_stall_i;
+assign fetch_branch_o    = irq_request_q | branch_request_i;
+assign fetch_branch_pc_o = irq_request_q ? csr_evec_i : branch_pc_i;
+assign fetch_accept_o    = !exec_stall_i && !stall_scoreboard_r && !lsu_stall_i && !csr_stall_i && !muldiv_stall_i;
+
+//-------------------------------------------------------------
+// Faults
+//-------------------------------------------------------------
+assign fault_fetch_o     = fault_fetch_q;
+
+// Bad opcode detection...
+wire fault_invalid_inst_w = opcode_valid_r ? ~(|opcode_instr_o[`ENUM_INST_INTR-1:0]) : 1'b0;
 
 //-------------------------------------------------------------
 // get_reg_valid: Register contents valid
@@ -338,5 +425,218 @@ begin
 end
 endfunction
 `endif
+
+//-----------------------------------------------------------------
+// get_regname_str: Convert register number to string
+//-----------------------------------------------------------------
+`ifdef verilator
+function [79:0] get_regname_str;
+    input  [4:0] regnum;
+begin
+    case (regnum)
+        5'd0:  get_regname_str = "zero";
+        5'd1:  get_regname_str = "ra";
+        5'd2:  get_regname_str = "sp";
+        5'd3:  get_regname_str = "gp";
+        5'd4:  get_regname_str = "tp";
+        5'd5:  get_regname_str = "t0";
+        5'd6:  get_regname_str = "t1";
+        5'd7:  get_regname_str = "t2";
+        5'd8:  get_regname_str = "s0";
+        5'd9:  get_regname_str = "s1";
+        5'd10: get_regname_str = "a0";
+        5'd11: get_regname_str = "a1";
+        5'd12: get_regname_str = "a2";
+        5'd13: get_regname_str = "a3";
+        5'd14: get_regname_str = "a4";
+        5'd15: get_regname_str = "a5";
+        5'd16: get_regname_str = "a6";
+        5'd17: get_regname_str = "a7";
+        5'd18: get_regname_str = "s2";
+        5'd19: get_regname_str = "s3";
+        5'd20: get_regname_str = "s4";
+        5'd21: get_regname_str = "s5";
+        5'd22: get_regname_str = "s6";
+        5'd23: get_regname_str = "s7";
+        5'd24: get_regname_str = "s8";
+        5'd25: get_regname_str = "s9";
+        5'd26: get_regname_str = "s10";
+        5'd27: get_regname_str = "s11";
+        5'd28: get_regname_str = "t3";
+        5'd29: get_regname_str = "t4";
+        5'd30: get_regname_str = "t5";
+        5'd31: get_regname_str = "t6";
+    endcase
+end
+endfunction
+
+//-------------------------------------------------------------------
+// Debug strings
+//-------------------------------------------------------------------
+reg [79:0] dbg_inst_str;
+reg [79:0] dbg_inst_ra;
+reg [79:0] dbg_inst_rb;
+reg [79:0] dbg_inst_rd;
+reg [31:0] dbg_inst_imm;
+
+`define DBG_IMM_IMM20     {opcode_opcode_o[31:12], 12'b0}
+`define DBG_IMM_IMM12     {{20{opcode_opcode_o[31]}}, opcode_opcode_o[31:20]}
+`define DBG_IMM_BIMM      {{19{opcode_opcode_o[31]}}, opcode_opcode_o[31], opcode_opcode_o[7], opcode_opcode_o[30:25], opcode_opcode_o[11:8], 1'b0}
+`define DBG_IMM_JIMM20    {{12{opcode_opcode_o[31]}}, opcode_opcode_o[19:12], opcode_opcode_o[20], opcode_opcode_o[30:25], opcode_opcode_o[24:21], 1'b0}
+`define DBG_IMM_STOREIMM  {{20{opcode_opcode_o[31]}}, opcode_opcode_o[31:25], opcode_opcode_o[11:7]}
+`define DBG_IMM_SHAMT     opcode_opcode_o[24:20]
+
+always @ *
+begin
+    dbg_inst_str = "-";
+    dbg_inst_ra  = "-";
+    dbg_inst_rb  = "-";
+    dbg_inst_rd  = "-";
+
+    if (opcode_valid_r)
+    begin
+        dbg_inst_ra  = get_regname_str(opcode_ra_idx_o);
+        dbg_inst_rb  = get_regname_str(opcode_rb_idx_o);
+        dbg_inst_rd  = get_regname_str(opcode_rd_idx_o);
+
+        case (1'b1)
+            opcode_instr_o[`ENUM_INST_ANDI]   : dbg_inst_str = "andi";
+            opcode_instr_o[`ENUM_INST_ADDI]   : dbg_inst_str = "addi";
+            opcode_instr_o[`ENUM_INST_SLTI]   : dbg_inst_str = "slti";
+            opcode_instr_o[`ENUM_INST_SLTIU]  : dbg_inst_str = "sltiu";
+            opcode_instr_o[`ENUM_INST_ORI]    : dbg_inst_str = "ori";
+            opcode_instr_o[`ENUM_INST_XORI]   : dbg_inst_str = "xori";
+            opcode_instr_o[`ENUM_INST_SLLI]   : dbg_inst_str = "slli";
+            opcode_instr_o[`ENUM_INST_SRLI]   : dbg_inst_str = "srli";
+            opcode_instr_o[`ENUM_INST_SRAI]   : dbg_inst_str = "srai";
+            opcode_instr_o[`ENUM_INST_LUI]    : dbg_inst_str = "lui";
+            opcode_instr_o[`ENUM_INST_AUIPC]  : dbg_inst_str = "auipc";
+            opcode_instr_o[`ENUM_INST_ADD]    : dbg_inst_str = "add";
+            opcode_instr_o[`ENUM_INST_SUB]    : dbg_inst_str = "sub";
+            opcode_instr_o[`ENUM_INST_SLT]    : dbg_inst_str = "slt";
+            opcode_instr_o[`ENUM_INST_SLTU]   : dbg_inst_str = "sltu";
+            opcode_instr_o[`ENUM_INST_XOR]    : dbg_inst_str = "xor";
+            opcode_instr_o[`ENUM_INST_OR]     : dbg_inst_str = "or";
+            opcode_instr_o[`ENUM_INST_AND]    : dbg_inst_str = "and";
+            opcode_instr_o[`ENUM_INST_SLL]    : dbg_inst_str = "sll";
+            opcode_instr_o[`ENUM_INST_SRL]    : dbg_inst_str = "srl";
+            opcode_instr_o[`ENUM_INST_SRA]    : dbg_inst_str = "sra";
+            opcode_instr_o[`ENUM_INST_JAL]    : dbg_inst_str = "jal";
+            opcode_instr_o[`ENUM_INST_JALR]   : dbg_inst_str = "jalr";
+            opcode_instr_o[`ENUM_INST_BEQ]    : dbg_inst_str = "beq";
+            opcode_instr_o[`ENUM_INST_BNE]    : dbg_inst_str = "bne";
+            opcode_instr_o[`ENUM_INST_BLT]    : dbg_inst_str = "blt";
+            opcode_instr_o[`ENUM_INST_BGE]    : dbg_inst_str = "bge";
+            opcode_instr_o[`ENUM_INST_BLTU]   : dbg_inst_str = "bltu";
+            opcode_instr_o[`ENUM_INST_BGEU]   : dbg_inst_str = "bgeu";
+            opcode_instr_o[`ENUM_INST_LB]     : dbg_inst_str = "lb";
+            opcode_instr_o[`ENUM_INST_LH]     : dbg_inst_str = "lh";
+            opcode_instr_o[`ENUM_INST_LW]     : dbg_inst_str = "lw";
+            opcode_instr_o[`ENUM_INST_LBU]    : dbg_inst_str = "lbu";
+            opcode_instr_o[`ENUM_INST_LHU]    : dbg_inst_str = "lhu";
+            opcode_instr_o[`ENUM_INST_LWU]    : dbg_inst_str = "lwu";
+            opcode_instr_o[`ENUM_INST_SB]     : dbg_inst_str = "sb";
+            opcode_instr_o[`ENUM_INST_SH]     : dbg_inst_str = "sh";
+            opcode_instr_o[`ENUM_INST_SW]     : dbg_inst_str = "sw";
+            opcode_instr_o[`ENUM_INST_ECALL]  : dbg_inst_str = "ecall";
+            opcode_instr_o[`ENUM_INST_EBREAK] : dbg_inst_str = "ebreak";
+            opcode_instr_o[`ENUM_INST_MRET]   : dbg_inst_str = "mret";
+            opcode_instr_o[`ENUM_INST_CSRRW]  : dbg_inst_str = "csrrw";
+            opcode_instr_o[`ENUM_INST_CSRRS]  : dbg_inst_str = "csrrs";
+            opcode_instr_o[`ENUM_INST_CSRRC]  : dbg_inst_str = "csrrc";
+            opcode_instr_o[`ENUM_INST_CSRRWI] : dbg_inst_str = "csrrwi";
+            opcode_instr_o[`ENUM_INST_CSRRSI] : dbg_inst_str = "csrrsi";
+            opcode_instr_o[`ENUM_INST_CSRRCI] : dbg_inst_str = "csrrci";
+            opcode_instr_o[`ENUM_INST_MUL]    : dbg_inst_str = "mul";
+            opcode_instr_o[`ENUM_INST_MULH]   : dbg_inst_str = "mulh";
+            opcode_instr_o[`ENUM_INST_MULHSU] : dbg_inst_str = "mulhsu";
+            opcode_instr_o[`ENUM_INST_MULHU]  : dbg_inst_str = "mulhu";
+            opcode_instr_o[`ENUM_INST_DIV]    : dbg_inst_str = "div";
+            opcode_instr_o[`ENUM_INST_DIVU]   : dbg_inst_str = "divu";
+            opcode_instr_o[`ENUM_INST_REM]    : dbg_inst_str = "rem";
+            opcode_instr_o[`ENUM_INST_REMU]   : dbg_inst_str = "remu";
+            opcode_instr_o[`ENUM_INST_INTR]   : dbg_inst_str = "interrupt";
+        endcase
+
+        case (1'b1)
+
+            opcode_instr_o[`ENUM_INST_ADDI],  // addi
+            opcode_instr_o[`ENUM_INST_ANDI],  // andi
+            opcode_instr_o[`ENUM_INST_SLTI],  // slti
+            opcode_instr_o[`ENUM_INST_SLTIU], // sltiu
+            opcode_instr_o[`ENUM_INST_ORI],   // ori
+            opcode_instr_o[`ENUM_INST_XORI],  // xori
+            opcode_instr_o[`ENUM_INST_CSRRW], // csrrw
+            opcode_instr_o[`ENUM_INST_CSRRS], // csrrs
+            opcode_instr_o[`ENUM_INST_CSRRC], // csrrc
+            opcode_instr_o[`ENUM_INST_CSRRWI],// csrrwi
+            opcode_instr_o[`ENUM_INST_CSRRSI],// csrrsi
+            opcode_instr_o[`ENUM_INST_CSRRCI]:// csrrci
+            begin
+                dbg_inst_rb  = "-";
+                dbg_inst_imm = `DBG_IMM_IMM12;
+            end
+
+            opcode_instr_o[`ENUM_INST_SLLI], // slli
+            opcode_instr_o[`ENUM_INST_SRLI], // srli
+            opcode_instr_o[`ENUM_INST_SRAI]: // srai
+            begin
+                dbg_inst_rb  = "-";
+                dbg_inst_imm = {27'b0, `DBG_IMM_SHAMT};
+            end
+
+            opcode_instr_o[`ENUM_INST_LUI]: // lui
+            begin
+                dbg_inst_ra  = "-";
+                dbg_inst_rb  = "-";
+                dbg_inst_imm = `DBG_IMM_IMM20;
+            end
+
+            opcode_instr_o[`ENUM_INST_AUIPC]: // auipc
+            begin
+                dbg_inst_ra  = "pc";
+                dbg_inst_rb  = "-";
+                dbg_inst_imm = `DBG_IMM_IMM20;
+            end   
+
+            opcode_instr_o[`ENUM_INST_JAL]:  // jal
+            begin
+                dbg_inst_ra  = "-";
+                dbg_inst_rb  = "-";
+                dbg_inst_imm = opcode_pc_o + `DBG_IMM_JIMM20;
+            end
+
+            opcode_instr_o[`ENUM_INST_JALR]: // jalr
+            begin
+                dbg_inst_rb  = "-";
+                dbg_inst_imm = opcode_ra_operand_o + `DBG_IMM_IMM12;
+            end
+
+            // lb lh lw lbu lhu lwu
+            opcode_instr_o[`ENUM_INST_LB],
+            opcode_instr_o[`ENUM_INST_LH],
+            opcode_instr_o[`ENUM_INST_LW],
+            opcode_instr_o[`ENUM_INST_LBU],
+            opcode_instr_o[`ENUM_INST_LHU],
+            opcode_instr_o[`ENUM_INST_LWU]:
+            begin
+                dbg_inst_rb  = "-";
+                dbg_inst_imm = opcode_ra_operand_o + `DBG_IMM_IMM12;
+            end 
+
+            // sb sh sw
+            opcode_instr_o[`ENUM_INST_SB],
+            opcode_instr_o[`ENUM_INST_SH],
+            opcode_instr_o[`ENUM_INST_SW]:
+            begin
+                dbg_inst_rd  = "-";
+                dbg_inst_imm = opcode_ra_operand_o + `DBG_IMM_STOREIMM;
+            end
+        endcase        
+    end
+end
+`endif
+
+
 
 endmodule

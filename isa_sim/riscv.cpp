@@ -358,7 +358,7 @@ uint32_t Riscv::AccessCsr(uint32_t address, uint32_t data, bool set, bool clr)
         //--------------------------------------------------------
         // Extensions
         //--------------------------------------------------------
-        case CSR_MSCRATCH:
+        case CSR_DSCRATCH:
             switch (data & 0xFF000000)
             {
                 case CSR_SIM_CTRL_EXIT:
@@ -367,8 +367,34 @@ uint32_t Riscv::AccessCsr(uint32_t address, uint32_t data, bool set, bool clr)
                 case CSR_SIM_CTRL_PUTC:
                     fprintf(stderr, "%c", (data & 0xFF));
                     break;
+                case CSR_SIM_CTRL_TRACE:
+                    enable_trace(data & 0xFF);
+                    break;
+                case CSR_SIM_PRINTF:
+                {
+                    uint32_t fmt_addr = r_gpr[10];
+                    uint32_t arg1     = r_gpr[11];
+                    uint32_t arg2     = r_gpr[12];
+                    uint32_t arg3     = r_gpr[13];
+                    uint32_t arg4     = r_gpr[14];
+
+                    char fmt_str[1024];
+                    int idx = 0;
+                    while (idx < (sizeof(fmt_str)-1))
+                    {
+                        fmt_str[idx] = read(fmt_addr++);
+                        if (fmt_str[idx] == 0)
+                            break;
+                        idx += 1;
+                    }
+
+                    char out_str[1024];
+                    sprintf(out_str, fmt_str, arg1, arg2, arg3, arg4);
+                    printf("%s",out_str);
+                }
+                break;
             }
-            break;            
+        break;
         case CSR_MTIME:
             data       &= CSR_MTIME_MASK;
             result      = csr_time;
@@ -848,7 +874,9 @@ void Riscv::Execute(void)
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: div r%d, r%d, r%d\n", pc, rd, rs1, rs2));
         StatsInst[ENUM_INST_DIV]++;
-        if (reg_rs2 != 0)
+        if ((signed)reg_rs1 == INT32_MIN && (signed)reg_rs2 == -1)
+            reg_rd = reg_rs1;
+        else if (reg_rs2 != 0)
             reg_rd = (signed)reg_rs1 / (signed)reg_rs2;
         else
             reg_rd = (unsigned)-1;
@@ -870,7 +898,10 @@ void Riscv::Execute(void)
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: rem r%d, r%d, r%d\n", pc, rd, rs1, rs2));
         StatsInst[ENUM_INST_REM]++;
-        if (reg_rs2 != 0)
+
+        if((signed)reg_rs1 == INT32_MIN && (signed)reg_rs2 == -1)
+            reg_rd = 0;
+        else if (reg_rs2 != 0)
             reg_rd = (signed)reg_rs1 % (signed)reg_rs2;
         else
             reg_rd = reg_rs1;

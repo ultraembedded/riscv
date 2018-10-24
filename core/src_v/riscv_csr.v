@@ -1,8 +1,8 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.5
+//                            V0.6
 //                     Ultra-Embedded.com
-//                     Copyright 2014-2017
+//                     Copyright 2014-2018
 //
 //                   admin@ultra-embedded.com
 //
@@ -53,6 +53,11 @@ module riscv_csr
     ,input  [  4:0]  opcode_rb_idx_i
     ,input  [ 31:0]  opcode_ra_operand_i
     ,input  [ 31:0]  opcode_rb_operand_i
+    ,input  [ 31:0]  cpu_id_i
+    ,input           fault_fetch_i
+    ,input           fault_store_i
+    ,input           fault_load_i
+    ,input  [ 31:0]  fault_addr_i
 
     // Outputs
     ,output [  4:0]  writeback_idx_o
@@ -63,6 +68,11 @@ module riscv_csr
     ,output          take_interrupt_o
 );
 
+
+
+//-----------------------------------------------------------------
+// Includes
+//-----------------------------------------------------------------
 `include "riscv_defs.v"
 
 //-------------------------------------------------------------
@@ -215,6 +225,10 @@ begin
                 csr_ip_r = csr_ip_r & ~`SR_IP_MTIP;
             end
         end
+        `CSR_MHARTID:
+        begin
+            result_r = cpu_id_i;
+        end
         default:
             ;
         endcase
@@ -252,13 +266,20 @@ begin
     // External interrupts
     csr_ip_r = csr_ip_r | (intr_i ? `SR_IP_MEIP : 0);
 
-    take_intr_r = ((csr_ip_r & csr_ie_q) != 32'd0) && csr_sr_r[`SR_MIE_BIT];
+    take_intr_r = (((csr_ip_r & csr_ie_q) != 32'd0) && csr_sr_r[`SR_MIE_BIT]) ||
+                    fault_fetch_i || fault_store_i || fault_load_i;
 
     // We will be taking an interrupt, record the reason
     if (take_intr_r)
     begin
+        if (fault_fetch_i)
+            csr_cause_r = `MCAUSE_FAULT_FETCH;
+        else if (fault_load_i)
+            csr_cause_r = `MCAUSE_FAULT_LOAD;
+        else if (fault_store_i)
+            csr_cause_r = `MCAUSE_FAULT_STORE;
         // NOTE: Lowest interrupt number wins
-        if (((csr_ip_r & csr_ie_q) & (1 << `IRQ_SOFT)) != 32'd0)
+        else if (((csr_ip_r & csr_ie_q) & (1 << `IRQ_SOFT)) != 32'd0)
             csr_cause_r = `MCAUSE_INTERRUPT + `IRQ_SOFT;
         else if (((csr_ip_r & csr_ie_q) & (1 << `IRQ_TIMER)) != 32'd0)
             csr_cause_r = `MCAUSE_INTERRUPT + `IRQ_TIMER;
@@ -311,9 +332,9 @@ begin
         writeback_value_q <= 32'b0;
     end
 
-    // CSR SIM_CTRL
 `ifdef verilator
-    if (opcode_valid_i && (set_r || clr_r) && (imm12_r[11:0] == `CSR_MSCRATCH))
+    // CSR SIM_CTRL
+    if (opcode_valid_i && (set_r || clr_r) && (imm12_r[11:0] == `CSR_DSCRATCH))
     begin
         case (data_r & 32'hFF000000)
         `CSR_SIM_CTRL_EXIT:
@@ -338,5 +359,6 @@ assign stall_o           = 1'b0; // Not used
 
 assign csr_epc_o         = csr_epc_q;
 assign csr_evec_o        = csr_evec_q;
+
 
 endmodule

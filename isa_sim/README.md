@@ -34,12 +34,12 @@ The following primitives can be used to print to the console or to exit a simula
 static inline void sim_exit(int exitcode)
 {
     unsigned int arg = CSR_SIM_CTRL_EXIT | ((unsigned char)exitcode);
-    asm volatile ("csrw mscratch,%0": : "r" (arg));
+    asm volatile ("csrw dscratch,%0": : "r" (arg));
 }
 
 static inline void sim_putc(int ch)
 {
     unsigned int arg = CSR_SIM_CTRL_PUTC | (ch & 0xFF);
-    asm volatile ("csrw mscratch,%0": : "r" (arg));
+    asm volatile ("csrw dscratch,%0": : "r" (arg));
 }
 ```

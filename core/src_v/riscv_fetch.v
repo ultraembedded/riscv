@@ -1,8 +1,8 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.5
+//                            V0.6
 //                     Ultra-Embedded.com
-//                     Copyright 2014-2017
+//                     Copyright 2014-2018
 //
 //                   admin@ultra-embedded.com
 //
@@ -48,6 +48,7 @@ module riscv_fetch
     ,input           fetch_accept_i
     ,input           icache_accept_i
     ,input           icache_valid_i
+    ,input           icache_error_i
     ,input  [ 31:0]  icache_inst_i
     ,input  [ 31:0]  icache_inst_pc_i
 
@@ -55,15 +56,24 @@ module riscv_fetch
     ,output          fetch_valid_o
     ,output [ 31:0]  fetch_instr_o
     ,output [ 31:0]  fetch_pc_o
+    ,output          fetch_fault_o
     ,output          icache_rd_o
     ,output          icache_flush_o
     ,output          icache_invalidate_o
     ,output [ 31:0]  icache_pc_o
 );
 
+
+
+//-----------------------------------------------------------------
+// Includes
+//-----------------------------------------------------------------
+`include "riscv_defs.v"
+
 //-------------------------------------------------------------
 // Registers / Wires
 //-------------------------------------------------------------
+reg         active_q;
 reg [31:0]  fetch_pc_q;
 
 reg [31:0]  branch_pc_q;
@@ -71,7 +81,7 @@ reg         branch_valid_q;
 
 reg         icache_fetch_q;
 
-reg [63:0]  skid_buffer_q;
+reg [64:0]  skid_buffer_q;
 reg         skid_valid_q;
 
 wire        icache_busy_w =  icache_fetch_q && !icache_valid_i;
@@ -93,13 +103,14 @@ begin
 
     icache_fetch_q <= 1'b0;
 
-    skid_buffer_q  <= 64'b0;
+    skid_buffer_q  <= 65'b0;
     skid_valid_q   <= 1'b0;
+    active_q       <= 1'b0;
 end
 else
 begin
     // Branch request skid buffer
-    if (stall_w)
+    if (stall_w || !active_q)
     begin
         branch_valid_q <= branch_w;
         branch_pc_q    <= branch_pc_w;
@@ -110,6 +121,9 @@ begin
         branch_pc_q    <= 32'b0;
     end
 
+    if (branch_w)
+        active_q <= 1'b1;
+
     // NPC
     if (!stall_w)
         fetch_pc_q <= icache_pc_o + 32'd4;
@@ -118,12 +132,12 @@ begin
     if (fetch_valid_o && !fetch_accept_i)
     begin
         skid_valid_q  <= 1'b1;
-        skid_buffer_q <= {fetch_pc_o, fetch_instr_o};
+        skid_buffer_q <= {fetch_fault_o, fetch_pc_o, fetch_instr_o};
     end
     else
     begin
         skid_valid_q  <= 1'b0;
-        skid_buffer_q <= 64'b0;
+        skid_buffer_q <= 65'b0;
     end
 
     // ICACHE fetch tracking
@@ -137,7 +151,7 @@ end
 //-------------------------------------------------------------
 // Outputs
 //-------------------------------------------------------------
-assign icache_rd_o         = !stall_w;
+assign icache_rd_o         = active_q & !stall_w;
 assign icache_pc_o         = branch_w ? branch_pc_w : fetch_pc_q;
 assign icache_flush_o      = 1'b0;
 assign icache_invalidate_o = 1'b0;
@@ -145,5 +159,8 @@ assign icache_invalidate_o = 1'b0;
 assign fetch_valid_o = (icache_valid_i || skid_valid_q) & !branch_w;
 assign fetch_pc_o    = skid_valid_q ? skid_buffer_q[63:32] : icache_inst_pc_i;
 assign fetch_instr_o = skid_valid_q ? skid_buffer_q[31:0]  : icache_inst_i;
+assign fetch_fault_o = skid_valid_q ? skid_buffer_q[64]    : 
+                       icache_valid_i ? icache_error_i     : 1'b0;
+
 
 endmodule

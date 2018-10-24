@@ -2,7 +2,7 @@
 
 Github: http://github.com/ultraembedded/riscv
 
-A simple RISC-V core written in Verilog and an instruction set simulator supporting RV32I.
+A simple RISC-V core written in Verilog and an instruction set simulator supporting RV32IM.
 This core has been tested against a co-simulation model, and exercised on FPGA.
 
 ## Directories
@@ -17,7 +17,7 @@ This core has been tested against a co-simulation model, and exercised on FPGA.
 ## Features
 
 The top (riscv_tcm_top) contains;
-* RISC-V core (RV32I instructions supported).
+* RISC-V core (RV32IM instructions supported).
 * 64KB dual ported RAM for (I/D code and data).
 * AXI4 slave port for loading the RAM, DMA access, etc (including support for burst access).
 * AXI4-Lite master port for CPU access to peripherals.

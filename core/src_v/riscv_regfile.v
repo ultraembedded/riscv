@@ -1,8 +1,8 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.5
+//                            V0.6
 //                     Ultra-Embedded.com
-//                     Copyright 2014-2017
+//                     Copyright 2014-2018
 //
 //                   admin@ultra-embedded.com
 //
@@ -48,6 +48,8 @@ module riscv_regfile
     input [31:0]      rd1_value_i,
     input [4:0]       rd2_i,
     input [31:0]      rd2_value_i,
+    input [4:0]       rd3_i,
+    input [31:0]      rd3_value_i,
     input [4:0]       ra_i,
     input [4:0]       rb_i,
     output [31:0]     ra_value_o,
@@ -90,7 +92,7 @@ reg [31:0] reg_r30_q;
 reg [31:0] reg_r31_q;
 
 //-----------------------------------------------------------------
-// Flop based register File
+// Flop based register File (for simulation)
 //-----------------------------------------------------------------
 
 // Synchronous register write back
@@ -134,96 +136,127 @@ begin
     if      (rd0_i == 5'd1) reg_r1_q <= rd0_value_i;
     else if (rd1_i == 5'd1) reg_r1_q <= rd1_value_i;
     else if (rd2_i == 5'd1) reg_r1_q <= rd2_value_i;
+    else if (rd3_i == 5'd1) reg_r1_q <= rd3_value_i;
     if      (rd0_i == 5'd2) reg_r2_q <= rd0_value_i;
     else if (rd1_i == 5'd2) reg_r2_q <= rd1_value_i;
     else if (rd2_i == 5'd2) reg_r2_q <= rd2_value_i;
+    else if (rd3_i == 5'd2) reg_r2_q <= rd3_value_i;
     if      (rd0_i == 5'd3) reg_r3_q <= rd0_value_i;
     else if (rd1_i == 5'd3) reg_r3_q <= rd1_value_i;
     else if (rd2_i == 5'd3) reg_r3_q <= rd2_value_i;
+    else if (rd3_i == 5'd3) reg_r3_q <= rd3_value_i;
     if      (rd0_i == 5'd4) reg_r4_q <= rd0_value_i;
     else if (rd1_i == 5'd4) reg_r4_q <= rd1_value_i;
     else if (rd2_i == 5'd4) reg_r4_q <= rd2_value_i;
+    else if (rd3_i == 5'd4) reg_r4_q <= rd3_value_i;
     if      (rd0_i == 5'd5) reg_r5_q <= rd0_value_i;
     else if (rd1_i == 5'd5) reg_r5_q <= rd1_value_i;
     else if (rd2_i == 5'd5) reg_r5_q <= rd2_value_i;
+    else if (rd3_i == 5'd5) reg_r5_q <= rd3_value_i;
     if      (rd0_i == 5'd6) reg_r6_q <= rd0_value_i;
     else if (rd1_i == 5'd6) reg_r6_q <= rd1_value_i;
     else if (rd2_i == 5'd6) reg_r6_q <= rd2_value_i;
+    else if (rd3_i == 5'd6) reg_r6_q <= rd3_value_i;
     if      (rd0_i == 5'd7) reg_r7_q <= rd0_value_i;
     else if (rd1_i == 5'd7) reg_r7_q <= rd1_value_i;
     else if (rd2_i == 5'd7) reg_r7_q <= rd2_value_i;
+    else if (rd3_i == 5'd7) reg_r7_q <= rd3_value_i;
     if      (rd0_i == 5'd8) reg_r8_q <= rd0_value_i;
     else if (rd1_i == 5'd8) reg_r8_q <= rd1_value_i;
     else if (rd2_i == 5'd8) reg_r8_q <= rd2_value_i;
+    else if (rd3_i == 5'd8) reg_r8_q <= rd3_value_i;
     if      (rd0_i == 5'd9) reg_r9_q <= rd0_value_i;
     else if (rd1_i == 5'd9) reg_r9_q <= rd1_value_i;
     else if (rd2_i == 5'd9) reg_r9_q <= rd2_value_i;
+    else if (rd3_i == 5'd9) reg_r9_q <= rd3_value_i;
     if      (rd0_i == 5'd10) reg_r10_q <= rd0_value_i;
     else if (rd1_i == 5'd10) reg_r10_q <= rd1_value_i;
     else if (rd2_i == 5'd10) reg_r10_q <= rd2_value_i;
+    else if (rd3_i == 5'd10) reg_r10_q <= rd3_value_i;
     if      (rd0_i == 5'd11) reg_r11_q <= rd0_value_i;
     else if (rd1_i == 5'd11) reg_r11_q <= rd1_value_i;
     else if (rd2_i == 5'd11) reg_r11_q <= rd2_value_i;
+    else if (rd3_i == 5'd11) reg_r11_q <= rd3_value_i;
     if      (rd0_i == 5'd12) reg_r12_q <= rd0_value_i;
     else if (rd1_i == 5'd12) reg_r12_q <= rd1_value_i;
     else if (rd2_i == 5'd12) reg_r12_q <= rd2_value_i;
+    else if (rd3_i == 5'd12) reg_r12_q <= rd3_value_i;
     if      (rd0_i == 5'd13) reg_r13_q <= rd0_value_i;
     else if (rd1_i == 5'd13) reg_r13_q <= rd1_value_i;
     else if (rd2_i == 5'd13) reg_r13_q <= rd2_value_i;
+    else if (rd3_i == 5'd13) reg_r13_q <= rd3_value_i;
     if      (rd0_i == 5'd14) reg_r14_q <= rd0_value_i;
     else if (rd1_i == 5'd14) reg_r14_q <= rd1_value_i;
     else if (rd2_i == 5'd14) reg_r14_q <= rd2_value_i;
+    else if (rd3_i == 5'd14) reg_r14_q <= rd3_value_i;
     if      (rd0_i == 5'd15) reg_r15_q <= rd0_value_i;
     else if (rd1_i == 5'd15) reg_r15_q <= rd1_value_i;
     else if (rd2_i == 5'd15) reg_r15_q <= rd2_value_i;
+    else if (rd3_i == 5'd15) reg_r15_q <= rd3_value_i;
     if      (rd0_i == 5'd16) reg_r16_q <= rd0_value_i;
     else if (rd1_i == 5'd16) reg_r16_q <= rd1_value_i;
     else if (rd2_i == 5'd16) reg_r16_q <= rd2_value_i;
+    else if (rd3_i == 5'd16) reg_r16_q <= rd3_value_i;
     if      (rd0_i == 5'd17) reg_r17_q <= rd0_value_i;
     else if (rd1_i == 5'd17) reg_r17_q <= rd1_value_i;
     else if (rd2_i == 5'd17) reg_r17_q <= rd2_value_i;
+    else if (rd3_i == 5'd17) reg_r17_q <= rd3_value_i;
     if      (rd0_i == 5'd18) reg_r18_q <= rd0_value_i;
     else if (rd1_i == 5'd18) reg_r18_q <= rd1_value_i;
     else if (rd2_i == 5'd18) reg_r18_q <= rd2_value_i;
+    else if (rd3_i == 5'd18) reg_r18_q <= rd3_value_i;
     if      (rd0_i == 5'd19) reg_r19_q <= rd0_value_i;
     else if (rd1_i == 5'd19) reg_r19_q <= rd1_value_i;
     else if (rd2_i == 5'd19) reg_r19_q <= rd2_value_i;
+    else if (rd3_i == 5'd19) reg_r19_q <= rd3_value_i;
     if      (rd0_i == 5'd20) reg_r20_q <= rd0_value_i;
     else if (rd1_i == 5'd20) reg_r20_q <= rd1_value_i;
     else if (rd2_i == 5'd20) reg_r20_q <= rd2_value_i;
+    else if (rd3_i == 5'd20) reg_r20_q <= rd3_value_i;
     if      (rd0_i == 5'd21) reg_r21_q <= rd0_value_i;
     else if (rd1_i == 5'd21) reg_r21_q <= rd1_value_i;
     else if (rd2_i == 5'd21) reg_r21_q <= rd2_value_i;
+    else if (rd3_i == 5'd21) reg_r21_q <= rd3_value_i;
     if      (rd0_i == 5'd22) reg_r22_q <= rd0_value_i;
     else if (rd1_i == 5'd22) reg_r22_q <= rd1_value_i;
     else if (rd2_i == 5'd22) reg_r22_q <= rd2_value_i;
+    else if (rd3_i == 5'd22) reg_r22_q <= rd3_value_i;
     if      (rd0_i == 5'd23) reg_r23_q <= rd0_value_i;
     else if (rd1_i == 5'd23) reg_r23_q <= rd1_value_i;
     else if (rd2_i == 5'd23) reg_r23_q <= rd2_value_i;
+    else if (rd3_i == 5'd23) reg_r23_q <= rd3_value_i;
     if      (rd0_i == 5'd24) reg_r24_q <= rd0_value_i;
     else if (rd1_i == 5'd24) reg_r24_q <= rd1_value_i;
     else if (rd2_i == 5'd24) reg_r24_q <= rd2_value_i;
+    else if (rd3_i == 5'd24) reg_r24_q <= rd3_value_i;
     if      (rd0_i == 5'd25) reg_r25_q <= rd0_value_i;
     else if (rd1_i == 5'd25) reg_r25_q <= rd1_value_i;
     else if (rd2_i == 5'd25) reg_r25_q <= rd2_value_i;
+    else if (rd3_i == 5'd25) reg_r25_q <= rd3_value_i;
     if      (rd0_i == 5'd26) reg_r26_q <= rd0_value_i;
     else if (rd1_i == 5'd26) reg_r26_q <= rd1_value_i;
     else if (rd2_i == 5'd26) reg_r26_q <= rd2_value_i;
+    else if (rd3_i == 5'd26) reg_r26_q <= rd3_value_i;
     if      (rd0_i == 5'd27) reg_r27_q <= rd0_value_i;
     else if (rd1_i == 5'd27) reg_r27_q <= rd1_value_i;
     else if (rd2_i == 5'd27) reg_r27_q <= rd2_value_i;
+    else if (rd3_i == 5'd27) reg_r27_q <= rd3_value_i;
     if      (rd0_i == 5'd28) reg_r28_q <= rd0_value_i;
     else if (rd1_i == 5'd28) reg_r28_q <= rd1_value_i;
     else if (rd2_i == 5'd28) reg_r28_q <= rd2_value_i;
+    else if (rd3_i == 5'd28) reg_r28_q <= rd3_value_i;
     if      (rd0_i == 5'd29) reg_r29_q <= rd0_value_i;
     else if (rd1_i == 5'd29) reg_r29_q <= rd1_value_i;
     else if (rd2_i == 5'd29) reg_r29_q <= rd2_value_i;
+    else if (rd3_i == 5'd29) reg_r29_q <= rd3_value_i;
     if      (rd0_i == 5'd30) reg_r30_q <= rd0_value_i;
     else if (rd1_i == 5'd30) reg_r30_q <= rd1_value_i;
     else if (rd2_i == 5'd30) reg_r30_q <= rd2_value_i;
+    else if (rd3_i == 5'd30) reg_r30_q <= rd3_value_i;
     if      (rd0_i == 5'd31) reg_r31_q <= rd0_value_i;
     else if (rd1_i == 5'd31) reg_r31_q <= rd1_value_i;
     else if (rd2_i == 5'd31) reg_r31_q <= rd2_value_i;
+    else if (rd3_i == 5'd31) reg_r31_q <= rd3_value_i;
 end
 
 //-----------------------------------------------------------------
@@ -359,7 +392,41 @@ function set_register; /*verilator public*/
     input [4:0] r;
     input [31:0] value;
 begin
-    // Not implemented
+    //case (r)
+    //5'd1:  reg_r1_q  <= value;
+    //5'd2:  reg_r2_q  <= value;
+    //5'd3:  reg_r3_q  <= value;
+    //5'd4:  reg_r4_q  <= value;
+    //5'd5:  reg_r5_q  <= value;
+    //5'd6:  reg_r6_q  <= value;
+    //5'd7:  reg_r7_q  <= value;
+    //5'd8:  reg_r8_q  <= value;
+    //5'd9:  reg_r9_q  <= value;
+    //5'd10: reg_r10_q <= value;
+    //5'd11: reg_r11_q <= value;
+    //5'd12: reg_r12_q <= value;
+    //5'd13: reg_r13_q <= value;
+    //5'd14: reg_r14_q <= value;
+    //5'd15: reg_r15_q <= value;
+    //5'd16: reg_r16_q <= value;
+    //5'd17: reg_r17_q <= value;
+    //5'd18: reg_r18_q <= value;
+    //5'd19: reg_r19_q <= value;
+    //5'd20: reg_r20_q <= value;
+    //5'd21: reg_r21_q <= value;
+    //5'd22: reg_r22_q <= value;
+    //5'd23: reg_r23_q <= value;
+    //5'd24: reg_r24_q <= value;
+    //5'd25: reg_r25_q <= value;
+    //5'd26: reg_r26_q <= value;
+    //5'd27: reg_r27_q <= value;
+    //5'd28: reg_r28_q <= value;
+    //5'd29: reg_r29_q <= value;
+    //5'd30: reg_r30_q <= value;
+    //5'd31: reg_r31_q <= value;
+    //default :
+    //    ;
+    //endcase
 end
 endfunction
 `endif

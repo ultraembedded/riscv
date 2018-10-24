@@ -1,8 +1,8 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.5
+//                            V0.6
 //                     Ultra-Embedded.com
-//                     Copyright 2014-2017
+//                     Copyright 2014-2018
 //
 //                   admin@ultra-embedded.com
 //
@@ -55,6 +55,7 @@ module riscv_lsu
     ,input  [ 31:0]  mem_data_rd_i
     ,input           mem_accept_i
     ,input           mem_ack_i
+    ,input           mem_error_i
     ,input  [ 10:0]  mem_resp_tag_i
 
     // Outputs
@@ -68,9 +69,17 @@ module riscv_lsu
     ,output          mem_flush_o
     ,output [  4:0]  writeback_idx_o
     ,output [ 31:0]  writeback_value_o
+    ,output          fault_store_o
+    ,output          fault_load_o
+    ,output [ 31:0]  fault_addr_o
     ,output          stall_o
 );
 
+
+
+//-----------------------------------------------------------------
+// Includes
+//-----------------------------------------------------------------
 `include "riscv_defs.v"
 
 //-------------------------------------------------------------
@@ -107,11 +116,17 @@ wire store_inst_w = (opcode_instr_i[`ENUM_INST_SB]  ||
 reg [31:0]  mem_addr_r;
 always @ *
 begin
-    if (opcode_valid_i && load_inst_w)
+    if (opcode_valid_i && opcode_instr_i[`ENUM_INST_CSRRW])
+        mem_addr_r = opcode_ra_operand_i;
+    else if (opcode_valid_i && load_inst_w)
         mem_addr_r = opcode_ra_operand_i + {{20{opcode_opcode_i[31]}}, opcode_opcode_i[31:20]};
     else
         mem_addr_r = opcode_ra_operand_i + {{20{opcode_opcode_i[31]}}, opcode_opcode_i[31:25], opcode_opcode_i[11:7]};
 end
+
+wire dcache_flush_w      = opcode_instr_i[`ENUM_INST_CSRRW] && (opcode_opcode_i[31:20] == `CSR_DFLUSH);
+wire dcache_writeback_w  = opcode_instr_i[`ENUM_INST_CSRRW] && (opcode_opcode_i[31:20] == `CSR_DWRITEBACK);
+wire dcache_invalidate_w = opcode_instr_i[`ENUM_INST_CSRRW] && (opcode_opcode_i[31:20] == `CSR_DINVALIDATE);
 
 //-------------------------------------------------------------
 // Sequential
@@ -128,7 +143,7 @@ begin
     mem_invalidate_q <= 1'b0;
     mem_flush_q      <= 1'b0;
 end
-else if (!((mem_rd_o || mem_wr_o != 4'b0) && !mem_accept_i))
+else if (!((mem_invalidate_o || mem_flush_o || mem_rd_o || mem_wr_o != 4'b0) && !mem_accept_i))
 begin
     mem_addr_q       <= 32'b0;
     mem_data_wr_q    <= 32'b0;
@@ -199,9 +214,14 @@ begin
     else
         mem_wr_q         <= 4'b0;
 
-    mem_cacheable_q  <= 1'b0;
-    mem_invalidate_q <= 1'b0;
-    mem_flush_q      <= 1'b0;
+/* verilator lint_off UNSIGNED */
+/* verilator lint_off CMPCONST */
+    mem_cacheable_q  <= mem_addr_r >= 32'h0 && mem_addr_r <= 32'h7fffffff;
+/* verilator lint_on CMPCONST */
+/* verilator lint_on UNSIGNED */
+
+    mem_invalidate_q <= opcode_valid_i & dcache_invalidate_w;
+    mem_flush_q      <= opcode_valid_i & dcache_flush_w;
 
     // Mask address bits
     mem_addr_q <= {mem_addr_r[31:2], 2'b0};
@@ -217,7 +237,15 @@ assign mem_invalidate_o = mem_invalidate_q;
 assign mem_flush_o      = mem_flush_q;
 
 // Stall upstream if cache is busy
-assign stall_o          = ((mem_rd_o || mem_wr_o != 4'b0) && !mem_accept_i);
+assign stall_o          = ((mem_invalidate_o || mem_flush_o || mem_rd_o || mem_wr_o != 4'b0) && !mem_accept_i);
+
+//-------------------------------------------------------------
+// Error handling
+//-------------------------------------------------------------
+// NOTE: Current implementation does not track addresses...
+assign fault_addr_o  = 32'b0;
+assign fault_load_o  = mem_ack_i ? (mem_resp_tag_i[9:7] != 3'b0 && mem_error_i) : 1'b0;
+assign fault_store_o = mem_ack_i ? (mem_resp_tag_i[9:7] == 3'b0 && mem_error_i) : 1'b0;
 
 //-------------------------------------------------------------
 // Load response
@@ -276,5 +304,6 @@ end
 
 assign writeback_idx_o   = wb_idx_r;
 assign writeback_value_o = wb_result_r;
+
 
 endmodule
