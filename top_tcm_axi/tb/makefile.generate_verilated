@@ -1,7 +1,7 @@
 ###############################################################################
 # Variables
 ###############################################################################
-
+CORE             ?= core
 PARAMS           ?= 
 OUTPUT_DIR       ?= verilated
 SRC_DIR          ?= ../src_v
@@ -11,7 +11,7 @@ OUTPUT_SUFFIX    ?=
 SRC              ?= riscv_tcm_top
 NAME             ?= riscv_tcm_top
 
-RTL_INCLUDE       = ../../core/src_v
+RTL_INCLUDE       = ../../core/$(CORE)
 
 # Verilator options
 VERILATE_PARAMS  ?= --trace

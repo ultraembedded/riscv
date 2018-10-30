@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.6
+//                            V0.7
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2018
 //
@@ -9,7 +9,7 @@
 //                       License: BSD
 //-----------------------------------------------------------------
 //
-// Copyright (c) 2014, Ultra-Embedded.com
+// Copyright (c) 2014-2018, Ultra-Embedded.com
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -109,7 +109,7 @@ wire [31:0] rb_value_w;
 
 wire        stall_input_w = stall_scoreboard_r || exec_stall_i || lsu_stall_i || csr_stall_i || muldiv_stall_i;
 
-wire        take_irq_w    = take_interrupt_i & !irq_pending_q && !irq_inst_q;
+wire        take_irq_w    = take_interrupt_i && !stall_input_w && !irq_pending_q && !irq_inst_q;
 
 //-------------------------------------------------------------
 // Instances
@@ -158,40 +158,53 @@ begin
     // Interrupt request (from exec stage)
     if (take_irq_w)
     begin
-        // Interrupt in-progress
+        // Interrupt in-progress - stall fetch stage
         irq_pending_q <= 1'b1;
-
-        // Invalidate current instruction (regardless of stall)
-        valid_q       <= 1'b0;
-        inst_q        <= 32'b0;
-
-        // Branch - exec stage branch was missed due to IRQ, EPC should be branch target
-        if (branch_request_i)
-            pc_q      <= branch_pc_i;
-        // Not stalled / branching, return address is next PC which we just ignored
-        else if (!stall_input_w)
-            pc_q      <= pc_q + 32'd4;
-        // Stalled, replay current PC later (EPC = unexecuted current)
-        // Else: pc_q <= pc_q;
-    end
-    // Insertion of IRQ pseudo instruction / IRQ branch request
-    else if (irq_pending_q)
-    begin
-        irq_pending_q <= 1'b0;
-
-        // Branch to ISR vector
-        irq_request_q <= 1'b1;
 
         // Insert psuedo ISR instruction to modify CSR state
         valid_q       <= 1'b1;
         inst_q        <= 32'b0;
         irq_inst_q    <= 1'b1;
+
+        // Branch to ISR vector
+        irq_request_q <= 1'b1;
+
+        // Branch - exec stage branch was missed due to IRQ, EPC should be branch target
+        if (branch_request_i)
+            pc_q      <= branch_pc_i;
+        // Stalled exec stage, hold current PC
+        else if (stall_input_w)
+            ;
+        // Valid fetch incoming, record the PC as the instruction was ignored
+        else if (fetch_valid_i)
+            pc_q      <= fetch_pc_i;
+        // Current instruction accepted, increment PC to unexecuted instruction
+        else if (valid_q)
+            pc_q <= pc_q + 32'd4;
     end
-    // Normal operation
+    // Insertion of IRQ pseudo instruction / IRQ branch request
+    else if (irq_pending_q && !stall_input_w)
+    begin
+        irq_pending_q <= 1'b0;
+
+        // No valid instruction...
+        valid_q       <= 1'b0;
+        inst_q        <= 32'b0;
+        irq_inst_q    <= 1'b0;
+    end
+    // Normal operation / Branch
     else if (!stall_input_w || branch_request_i)
     begin
-        valid_q       <= fetch_valid_i && !branch_request_i && !irq_request_q;
-        pc_q          <= fetch_valid_i ? fetch_pc_i : pc_q;
+        valid_q       <= fetch_valid_i && !branch_request_i;
+
+        if (branch_request_i)
+            pc_q      <= branch_pc_i;
+        else if (fetch_valid_i)
+            pc_q      <= fetch_pc_i;
+        // Current instruction accepted, increment PC to unexecuted instruction
+        else if (valid_q)
+            pc_q <= pc_q + 32'd4;
+
         inst_q        <= fetch_instr_i;
         fault_fetch_q <= fetch_fault_i;
         irq_inst_q    <= 1'b0;
@@ -379,7 +392,7 @@ assign muldiv_opcode_valid_o  = opcode_valid_r && !exec_stall_i && !lsu_stall_i 
 //-------------------------------------------------------------
 assign fetch_branch_o    = irq_request_q | branch_request_i;
 assign fetch_branch_pc_o = irq_request_q ? csr_evec_i : branch_pc_i;
-assign fetch_accept_o    = !exec_stall_i && !stall_scoreboard_r && !lsu_stall_i && !csr_stall_i && !muldiv_stall_i;
+assign fetch_accept_o    = !exec_stall_i && !stall_scoreboard_r && !lsu_stall_i && !csr_stall_i && !muldiv_stall_i && !irq_pending_q;
 
 //-------------------------------------------------------------
 // Faults

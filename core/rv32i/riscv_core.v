@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.6
+//                            V0.7
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2018
 //
@@ -9,7 +9,7 @@
 //                       License: BSD
 //-----------------------------------------------------------------
 //
-// Copyright (c) 2014, Ultra-Embedded.com
+// Copyright (c) 2014-2018, Ultra-Embedded.com
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -73,7 +73,7 @@ module riscv_core
 );
 
 wire  [ 31:0]  fetch_branch_pc_w;
-wire           csr_stall_w;
+wire  [  4:0]  opcode_rd_idx_w;
 wire           fetch_accept_w;
 wire  [ 31:0]  fault_addr_w;
 wire  [ 55:0]  opcode_instr_w;
@@ -81,10 +81,9 @@ wire           take_interrupt_w;
 wire  [ 31:0]  fetch_pc_w;
 wire           fault_load_w;
 wire           exec_stall_w;
-wire           muldiv_opcode_valid_w;
 wire           fetch_fault_w;
-wire  [  4:0]  writeback_muldiv_idx_w;
-wire  [ 31:0]  csr_epc_w;
+wire           fetch_valid_w;
+wire           branch_request_w;
 wire           csr_opcode_valid_w;
 wire  [  4:0]  opcode_rb_idx_w;
 wire  [  4:0]  writeback_exec_idx_w;
@@ -92,34 +91,32 @@ wire  [  4:0]  writeback_mem_idx_w;
 wire  [ 31:0]  opcode_pc_w;
 wire           lsu_opcode_valid_w;
 wire  [ 31:0]  branch_pc_w;
-wire           muldiv_stall_w;
-wire           fetch_valid_w;
+wire  [ 31:0]  fetch_instr_w;
 wire           lsu_stall_w;
 wire           fault_store_w;
 wire  [  4:0]  opcode_ra_idx_w;
 wire           exec_opcode_valid_w;
 wire  [  4:0]  writeback_csr_idx_w;
 wire  [ 31:0]  writeback_mem_value_w;
-wire  [  4:0]  opcode_rd_idx_w;
+wire           csr_stall_w;
 wire  [ 31:0]  opcode_opcode_w;
 wire           fetch_branch_w;
 wire           fault_fetch_w;
-wire  [ 31:0]  writeback_muldiv_value_w;
 wire  [ 31:0]  writeback_exec_value_w;
 wire  [ 31:0]  csr_evec_w;
 wire  [ 31:0]  writeback_csr_value_w;
-wire           branch_request_w;
-wire  [ 31:0]  fetch_instr_w;
+wire  [ 31:0]  csr_epc_w;
 wire  [ 31:0]  opcode_rb_operand_w;
 wire  [ 31:0]  opcode_ra_operand_w;
 
 
-riscv_exec u_exec
+riscv_csr u_csr
 (
     // Inputs
      .clk_i(clk_i)
     ,.rst_i(rst_i)
-    ,.opcode_valid_i(exec_opcode_valid_w)
+    ,.intr_i(intr_i)
+    ,.opcode_valid_i(csr_opcode_valid_w)
     ,.opcode_instr_i(opcode_instr_w)
     ,.opcode_opcode_i(opcode_opcode_w)
     ,.opcode_pc_i(opcode_pc_w)
@@ -128,16 +125,19 @@ riscv_exec u_exec
     ,.opcode_rb_idx_i(opcode_rb_idx_w)
     ,.opcode_ra_operand_i(opcode_ra_operand_w)
     ,.opcode_rb_operand_i(opcode_rb_operand_w)
-    ,.csr_epc_i(csr_epc_w)
-    ,.csr_evec_i(csr_evec_w)
-    ,.reset_vector_i(reset_vector_i)
+    ,.cpu_id_i(cpu_id_i)
+    ,.fault_fetch_i(fault_fetch_w)
+    ,.fault_store_i(fault_store_w)
+    ,.fault_load_i(fault_load_w)
+    ,.fault_addr_i(fault_addr_w)
 
     // Outputs
-    ,.branch_request_o(branch_request_w)
-    ,.branch_pc_o(branch_pc_w)
-    ,.writeback_idx_o(writeback_exec_idx_w)
-    ,.writeback_value_o(writeback_exec_value_w)
-    ,.stall_o(exec_stall_w)
+    ,.writeback_idx_o(writeback_csr_idx_w)
+    ,.writeback_value_o(writeback_csr_value_w)
+    ,.stall_o(csr_stall_w)
+    ,.csr_epc_o(csr_epc_w)
+    ,.csr_evec_o(csr_evec_w)
+    ,.take_interrupt_o(take_interrupt_w)
 );
 
 
@@ -179,13 +179,12 @@ riscv_lsu u_lsu
 );
 
 
-riscv_csr u_csr
+riscv_exec u_exec
 (
     // Inputs
      .clk_i(clk_i)
     ,.rst_i(rst_i)
-    ,.intr_i(intr_i)
-    ,.opcode_valid_i(csr_opcode_valid_w)
+    ,.opcode_valid_i(exec_opcode_valid_w)
     ,.opcode_instr_i(opcode_instr_w)
     ,.opcode_opcode_i(opcode_opcode_w)
     ,.opcode_pc_i(opcode_pc_w)
@@ -194,41 +193,16 @@ riscv_csr u_csr
     ,.opcode_rb_idx_i(opcode_rb_idx_w)
     ,.opcode_ra_operand_i(opcode_ra_operand_w)
     ,.opcode_rb_operand_i(opcode_rb_operand_w)
-    ,.cpu_id_i(cpu_id_i)
-    ,.fault_fetch_i(fault_fetch_w)
-    ,.fault_store_i(fault_store_w)
-    ,.fault_load_i(fault_load_w)
-    ,.fault_addr_i(fault_addr_w)
+    ,.csr_epc_i(csr_epc_w)
+    ,.csr_evec_i(csr_evec_w)
+    ,.reset_vector_i(reset_vector_i)
 
     // Outputs
-    ,.writeback_idx_o(writeback_csr_idx_w)
-    ,.writeback_value_o(writeback_csr_value_w)
-    ,.stall_o(csr_stall_w)
-    ,.csr_epc_o(csr_epc_w)
-    ,.csr_evec_o(csr_evec_w)
-    ,.take_interrupt_o(take_interrupt_w)
-);
-
-
-riscv_muldiv u_muldiv
-(
-    // Inputs
-     .clk_i(clk_i)
-    ,.rst_i(rst_i)
-    ,.opcode_valid_i(muldiv_opcode_valid_w)
-    ,.opcode_instr_i(opcode_instr_w)
-    ,.opcode_opcode_i(opcode_opcode_w)
-    ,.opcode_pc_i(opcode_pc_w)
-    ,.opcode_rd_idx_i(opcode_rd_idx_w)
-    ,.opcode_ra_idx_i(opcode_ra_idx_w)
-    ,.opcode_rb_idx_i(opcode_rb_idx_w)
-    ,.opcode_ra_operand_i(opcode_ra_operand_w)
-    ,.opcode_rb_operand_i(opcode_rb_operand_w)
-
-    // Outputs
-    ,.writeback_idx_o(writeback_muldiv_idx_w)
-    ,.writeback_value_o(writeback_muldiv_value_w)
-    ,.stall_o(muldiv_stall_w)
+    ,.branch_request_o(branch_request_w)
+    ,.branch_pc_o(branch_pc_w)
+    ,.writeback_idx_o(writeback_exec_idx_w)
+    ,.writeback_value_o(writeback_exec_value_w)
+    ,.stall_o(exec_stall_w)
 );
 
 
@@ -249,12 +223,12 @@ riscv_decode u_decode
     ,.writeback_mem_value_i(writeback_mem_value_w)
     ,.writeback_csr_idx_i(writeback_csr_idx_w)
     ,.writeback_csr_value_i(writeback_csr_value_w)
-    ,.writeback_muldiv_idx_i(writeback_muldiv_idx_w)
-    ,.writeback_muldiv_value_i(writeback_muldiv_value_w)
+    ,.writeback_muldiv_idx_i(5'b0)
+    ,.writeback_muldiv_value_i(32'b0)
     ,.exec_stall_i(exec_stall_w)
     ,.lsu_stall_i(lsu_stall_w)
     ,.csr_stall_i(csr_stall_w)
-    ,.muldiv_stall_i(muldiv_stall_w)
+    ,.muldiv_stall_i(1'b0)
     ,.take_interrupt_i(take_interrupt_w)
     ,.csr_evec_i(csr_evec_w)
 
@@ -265,7 +239,7 @@ riscv_decode u_decode
     ,.exec_opcode_valid_o(exec_opcode_valid_w)
     ,.lsu_opcode_valid_o(lsu_opcode_valid_w)
     ,.csr_opcode_valid_o(csr_opcode_valid_w)
-    ,.muldiv_opcode_valid_o(muldiv_opcode_valid_w)
+    ,.muldiv_opcode_valid_o()
     ,.opcode_instr_o(opcode_instr_w)
     ,.opcode_opcode_o(opcode_opcode_w)
     ,.opcode_pc_o(opcode_pc_w)

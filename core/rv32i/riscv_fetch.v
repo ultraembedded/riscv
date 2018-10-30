@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.6
+//                            V0.7
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2018
 //
@@ -9,7 +9,7 @@
 //                       License: BSD
 //-----------------------------------------------------------------
 //
-// Copyright (c) 2014, Ultra-Embedded.com
+// Copyright (c) 2014-2018, Ultra-Embedded.com
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without

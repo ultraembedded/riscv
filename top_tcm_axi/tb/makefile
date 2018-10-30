@@ -6,6 +6,8 @@ SYSTEMC_HOME  ?= /usr/local/systemc-2.3.1
 
 TEST_IMAGE ?= ../../isa_sim/firmware.elf
 
+CORE       ?= rv32im
+
 export VERILATOR_SRC
 export SYSTEMC_HOME
 
@@ -16,12 +18,12 @@ all: build
 
 build:
 	make -C ../../isa_sim lib
-	make -f makefile.generate_verilated
+	make -f makefile.generate_verilated CORE=$(CORE)
 	make -f makefile.build_verilated
 	make -f makefile.build_sysc_tb
 
 clean:
-	make -f makefile.generate_verilated $@
+	make -f makefile.generate_verilated  CORE=$(CORE) $@
 	make -f makefile.build_verilated $@
 	make -f makefile.build_sysc_tb $@
 	-rm *.vcd

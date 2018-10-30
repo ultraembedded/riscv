@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.6
+//                            V0.7
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2018
 //
@@ -9,7 +9,7 @@
 //                       License: BSD
 //-----------------------------------------------------------------
 //
-// Copyright (c) 2014, Ultra-Embedded.com
+// Copyright (c) 2014-2018, Ultra-Embedded.com
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -86,6 +86,7 @@ reg [31:0]  csr_ip_q;
 reg [31:0]  csr_ie_q;
 reg [31:0]  csr_time_q;
 reg [31:0]  csr_timecmp_q;
+reg [1:0]   csr_mpriv_q;
 
 reg         take_interrupt_q;
 
@@ -104,6 +105,7 @@ reg [31:0]  csr_ip_r;
 reg [31:0]  csr_ie_r;
 reg [31:0]  csr_time_r;
 reg [31:0]  csr_timecmp_r;
+reg [1:0]   csr_mpriv_r;
 
 reg         take_intr_r;
 
@@ -126,6 +128,7 @@ begin
     csr_ie_r       = csr_ie_q;
     csr_time_r     = csr_time_q;
     csr_timecmp_r  = csr_timecmp_q;
+    csr_mpriv_r    = csr_mpriv_q;
 
     result_r       = 32'b0;
     data_r         = 32'b0;
@@ -217,7 +220,7 @@ begin
             result_r      = csr_time_q; // Return flopped state
 
             // Non-std behaviour - write to CSR_TIME gives next interrupt threshold
-            if (set_r)
+            if (set_r && data_r != 32'b0)
             begin
                 csr_timecmp_r = data_r;
 
@@ -229,6 +232,10 @@ begin
         begin
             result_r = cpu_id_i;
         end
+        `CSR_MISA:
+        begin
+            result_r = `MISA_RV32 | `MISA_RVI;
+        end
         default:
             ;
         endcase
@@ -236,21 +243,38 @@ begin
     // System Call
     else if (opcode_valid_i && opcode_instr_i[`ENUM_INST_ECALL])
     begin
-        csr_cause_r = `MCAUSE_ECALL_U;
+        case (csr_mpriv_r)
+        `PRIV_MACHINE: csr_cause_r = `MCAUSE_ECALL_M;
+        `PRIV_SUPER:   csr_cause_r = `MCAUSE_ECALL_S;
+        default:       csr_cause_r = `MCAUSE_ECALL_U;
+        endcase
+
         csr_epc_r   = opcode_pc_i;
 
         // Interrupt save and disable
         csr_sr_r = csr_sr_r & ~`SR_MPIE;
         csr_sr_r = csr_sr_r | (csr_sr_r[`SR_MIE_BIT] ? `SR_MPIE : 0);
         csr_sr_r = csr_sr_r & ~`SR_MIE;
+
+        // Record previous level
+        csr_sr_r[`SR_MPP_RNG] = csr_mpriv_r;
+
+        // Raise level to machine
+        csr_mpriv_r = `PRIV_MACHINE;
     end
     // Return from interrupt
     else if (opcode_valid_i && opcode_instr_i[`ENUM_INST_MRET])
     begin
-        // Interrupt enable pop
-        csr_sr_r = csr_sr_r & ~`SR_MIE;
-        csr_sr_r = csr_sr_r | (csr_sr_r[`SR_MPIE_BIT] ? `SR_MIE : 0);
-        csr_sr_r = csr_sr_r | `SR_MPIE;
+            // Set privilege level
+            csr_mpriv_r = csr_sr_r[`SR_MPP_RNG];
+
+            // Set next MPP to user mode
+            csr_sr_r[`SR_MPP_RNG] = `PRIV_USER;
+
+            // Interrupt enable pop
+            csr_sr_r = csr_sr_r & ~`SR_MIE;
+            csr_sr_r = csr_sr_r | (csr_sr_r[`SR_MPIE_BIT] ? `SR_MIE : 0);
+            csr_sr_r = csr_sr_r | `SR_MPIE;
     end
     // Take interrupt
     else if (opcode_valid_i && opcode_instr_i[`ENUM_INST_INTR])
@@ -305,6 +329,7 @@ begin
     csr_ie_q          <= 32'b0;
     csr_time_q        <= 32'b0;
     csr_timecmp_q     <= 32'b0;
+    csr_mpriv_q       <= `PRIV_MACHINE;
     writeback_idx_q   <= 5'b0;
     writeback_value_q <= 32'b0;
     take_interrupt_q  <= 1'b0;
@@ -319,6 +344,7 @@ begin
     csr_ie_q          <= csr_ie_r;
     csr_time_q        <= csr_time_r;
     csr_timecmp_q     <= csr_timecmp_r;
+    csr_mpriv_q       <= csr_mpriv_r;
     take_interrupt_q  <= take_intr_r;
 
     if (opcode_valid_i && (set_r || clr_r))
@@ -339,6 +365,7 @@ begin
         case (data_r & 32'hFF000000)
         `CSR_SIM_CTRL_EXIT:
         begin
+            //exit(data_r[7:0]);
             $finish;
             $finish;
         end

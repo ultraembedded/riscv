@@ -1,3 +1,43 @@
+//-----------------------------------------------------------------
+//                         RISC-V Core
+//                            V0.7
+//                     Ultra-Embedded.com
+//                     Copyright 2014-2018
+//
+//                   admin@ultra-embedded.com
+//
+//                       License: BSD
+//-----------------------------------------------------------------
+//
+// Copyright (c) 2014-2018, Ultra-Embedded.com
+// All rights reserved.
+// 
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions 
+// are met:
+//   - Redistributions of source code must retain the above copyright
+//     notice, this list of conditions and the following disclaimer.
+//   - Redistributions in binary form must reproduce the above copyright
+//     notice, this list of conditions and the following disclaimer 
+//     in the documentation and/or other materials provided with the 
+//     distribution.
+//   - Neither the name of the author nor the names of its contributors 
+//     may be used to endorse or promote products derived from this 
+//     software without specific prior written permission.
+// 
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS 
+// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT 
+// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR 
+// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHOR BE 
+// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
+// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
+// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR 
+// BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF 
+// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF 
+// THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF 
+// SUCH DAMAGE.
+//-----------------------------------------------------------------
 //--------------------------------------------------------------------
 // ALU Operations
 //--------------------------------------------------------------------
@@ -237,9 +277,10 @@
 `define INST_EBREAK 32'h100073
 `define INST_EBREAK_MASK 32'hffffffff
 
-// mret
-`define INST_MRET 32'h30200073
-`define INST_MRET_MASK 32'hffffffff
+// mret / sret
+`define INST_MRET 32'h10200073
+`define INST_MRET_MASK 32'hdfffffff
+`define INST_MRET_R    29
 
 // csrrw
 `define INST_CSRRW 32'h1073
@@ -300,9 +341,9 @@
 //--------------------------------------------------------------------
 // Privilege levels
 //--------------------------------------------------------------------
-`define PRIV_USER         0
-`define PRIV_SUPER        1
-`define PRIV_MACHINE      3
+`define PRIV_USER         2'd0
+`define PRIV_SUPER        2'd1
+`define PRIV_MACHINE      2'd3
 
 //--------------------------------------------------------------------
 // IRQ Numbers
@@ -328,6 +369,18 @@
 //--------------------------------------------------------------------
 `define CSR_MSTATUS       12'h300
 `define CSR_MSTATUS_MASK  32'hFFFFFFFF
+`define CSR_MISA          12'h301
+`define CSR_MISA_MASK     32'hFFFFFFFF
+    `define MISA_RV32     32'h40000000
+    `define MISA_RVI      32'h00000100
+    `define MISA_RVE      32'h00000010
+    `define MISA_RVM      32'h00001000
+    `define MISA_RVA      32'h00000001
+    `define MISA_RVF      32'h00000020
+    `define MISA_RVD      32'h00000008
+    `define MISA_RVC      32'h00000004
+    `define MISA_RVS      32'h00040000
+    `define MISA_RVU      32'h00100000
 `define CSR_MIE           12'h304
 `define CSR_MIE_MASK      `IRQ_MASK
 `define CSR_MTVEC         12'h305
@@ -359,16 +412,19 @@
 // Status Register
 //--------------------------------------------------------------------
 //`define SR_UIE        (1 << 0)
-//`define SR_SIE        (1 << 1)
+`define SR_SIE          (1 << 1)
 `define SR_MIE_BIT      (3)
 `define SR_MIE          (1 << `SR_MIE_BIT)
 //`define SR_UPIE       (1 << 4)
-//`define SR_SPIE       (1 << 5)
+`define SR_SPIE_BIT     (5)
+`define SR_SPIE         (1 << `SR_SPIE_BIT)
 `define SR_MPIE_BIT     (7)
 `define SR_MPIE         (1 << `SR_MPIE_BIT)
+`define SR_SPP_RNG      8
 
 `define SR_MPP_SHIFT    11
 `define SR_MPP_MASK     3
+`define SR_MPP_RNG      12:11
 `define SR_MPP          (`SR_MPP_MASK  << `SR_MPP_SHIFT)
 `define SR_MPP_U        (`PRIV_USER    << `SR_MPP_SHIFT)
 `define SR_MPP_M        (`PRIV_MACHINE << `SR_MPP_SHIFT)
@@ -390,6 +446,8 @@
 `define MCAUSE_MISALIGNED_STORE         ((0 << `MCAUSE_INT) | 6)
 `define MCAUSE_FAULT_STORE              ((0 << `MCAUSE_INT) | 7)
 `define MCAUSE_ECALL_U                  ((0 << `MCAUSE_INT) | 8)
+`define MCAUSE_ECALL_S                  ((0 << `MCAUSE_INT) | 9)
+`define MCAUSE_ECALL_M                  ((0 << `MCAUSE_INT) | 11)
 `define MCAUSE_PAGE_FAULT_INST          ((0 << `MCAUSE_INT) | 12)
 `define MCAUSE_PAGE_FAULT_LOAD          ((0 << `MCAUSE_INT) | 13)
 `define MCAUSE_PAGE_FAULT_STORE         ((0 << `MCAUSE_INT) | 15)
