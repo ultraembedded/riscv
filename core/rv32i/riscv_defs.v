@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.7
+//                            V0.8
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2018
 //
@@ -96,7 +96,7 @@
 `define         ENUM_INST_SW    37
 `define      ENUM_INST_ECALL    38
 `define     ENUM_INST_EBREAK    39
-`define       ENUM_INST_MRET    40
+`define       ENUM_INST_ERET    40
 `define      ENUM_INST_CSRRW    41
 `define      ENUM_INST_CSRRS    42
 `define      ENUM_INST_CSRRC    43
@@ -111,7 +111,7 @@
 `define       ENUM_INST_DIVU    52
 `define        ENUM_INST_REM    53
 `define       ENUM_INST_REMU    54
-`define       ENUM_INST_INTR    55
+`define       ENUM_INST_SPARE   55
 `define        ENUM_INST_MAX    56
 
 //--------------------------------------------------------------------
@@ -338,6 +338,10 @@
 `define INST_REMU 32'h2007033
 `define INST_REMU_MASK 32'hfe00707f
 
+// wfi
+`define INST_WFI 32'h10500073
+`define INST_WFI_MASK 32'hffff8fff
+
 //--------------------------------------------------------------------
 // Privilege levels
 //--------------------------------------------------------------------
@@ -348,12 +352,22 @@
 //--------------------------------------------------------------------
 // IRQ Numbers
 //--------------------------------------------------------------------
-`define IRQ_SOFT          3
-`define IRQ_TIMER         7
-`define IRQ_EXT           11
-`define IRQ_MIN           (`IRQ_SOFT)
-`define IRQ_MAX           (`IRQ_EXT + 1)
-`define IRQ_MASK          ((1 << `IRQ_SOFT) | (1 << `IRQ_TIMER) | (1 << `IRQ_EXT))
+`define IRQ_S_SOFT   1
+`define IRQ_M_SOFT   3
+`define IRQ_S_TIMER  5
+`define IRQ_M_TIMER  7
+`define IRQ_S_EXT    9
+`define IRQ_M_EXT    11
+`define IRQ_MIN      (`IRQ_S_SOFT)
+`define IRQ_MAX      (`IRQ_M_EXT + 1)
+`define IRQ_MASK     ((1 << `IRQ_M_EXT)   | (1 << `IRQ_S_EXT)   |                       (1 << `IRQ_M_TIMER) | (1 << `IRQ_S_TIMER) |                       (1 << `IRQ_M_SOFT)  | (1 << `IRQ_S_SOFT))
+
+`define SR_IP_MSIP_R      `IRQ_M_SOFT
+`define SR_IP_MTIP_R      `IRQ_M_TIMER
+`define SR_IP_MEIP_R      `IRQ_M_EXT
+`define SR_IP_SSIP_R      `IRQ_S_SOFT
+`define SR_IP_STIP_R      `IRQ_S_TIMER
+`define SR_IP_SEIP_R      `IRQ_S_EXT
 
 //--------------------------------------------------------------------
 // CSR Registers - Simulation control
@@ -398,6 +412,28 @@
 `define CSR_MHARTID       12'hF14
 `define CSR_MHARTID_MASK  32'hFFFFFFFF
 
+//-----------------------------------------------------------------
+// CSR Registers - Supervisor
+//-----------------------------------------------------------------
+`define CSR_SSTATUS       12'h100
+`define CSR_SSTATUS_MASK  `SR_SMODE_MASK
+`define CSR_SIE           12'h104
+`define CSR_SIE_MASK      ((1 << `IRQ_S_EXT) | (1 << `IRQ_S_TIMER) | (1 << `IRQ_S_SOFT))
+`define CSR_STVEC         12'h105
+`define CSR_STVEC_MASK    32'hFFFFFFFF
+`define CSR_SSCRATCH      12'h140
+`define CSR_SSCRATCH_MASK 32'hFFFFFFFF
+`define CSR_SEPC          12'h141
+`define CSR_SEPC_MASK     32'hFFFFFFFF
+`define CSR_SCAUSE        12'h142
+`define CSR_SCAUSE_MASK   32'h8000000F
+`define CSR_STVAL         12'h143
+`define CSR_STVAL_MASK    32'hFFFFFFFF
+`define CSR_SIP           12'h144
+`define CSR_SIP_MASK      ((1 << `IRQ_S_EXT) | (1 << `IRQ_S_TIMER) | (1 << `IRQ_S_SOFT))
+`define CSR_SATP          12'h180
+`define CSR_SATP_MASK     32'hFFFFFFFF
+
 //--------------------------------------------------------------------
 // CSR Registers - DCACHE control
 //--------------------------------------------------------------------
@@ -411,27 +447,32 @@
 //--------------------------------------------------------------------
 // Status Register
 //--------------------------------------------------------------------
-//`define SR_UIE        (1 << 0)
-`define SR_SIE          (1 << 1)
-`define SR_MIE_BIT      (3)
-`define SR_MIE          (1 << `SR_MIE_BIT)
-//`define SR_UPIE       (1 << 4)
-`define SR_SPIE_BIT     (5)
-`define SR_SPIE         (1 << `SR_SPIE_BIT)
-`define SR_MPIE_BIT     (7)
-`define SR_MPIE         (1 << `SR_MPIE_BIT)
-`define SR_SPP_RNG      8
+`define SR_UIE         (1 << 0)
+`define SR_UIE_R       0
+`define SR_SIE         (1 << 1)
+`define SR_SIE_R       1
+`define SR_MIE         (1 << 3)
+`define SR_MIE_R       3
+`define SR_UPIE        (1 << 4)
+`define SR_UPIE_R      4
+`define SR_SPIE        (1 << 5)
+`define SR_SPIE_R      5
+`define SR_MPIE        (1 << 7)
+`define SR_MPIE_R      7
+`define SR_SPP         (1 << 8)
+`define SR_SPP_R       8
 
-`define SR_MPP_SHIFT    11
-`define SR_MPP_MASK     3
-`define SR_MPP_RNG      12:11
-`define SR_MPP          (`SR_MPP_MASK  << `SR_MPP_SHIFT)
-`define SR_MPP_U        (`PRIV_USER    << `SR_MPP_SHIFT)
-`define SR_MPP_M        (`PRIV_MACHINE << `SR_MPP_SHIFT)
+`define SR_MPP_SHIFT   11
+`define SR_MPP_MASK    2'h3
+`define SR_MPP_R       12:11
+`define SR_MPP_U       `PRIV_USER
+`define SR_MPP_S       `PRIV_SUPER
+`define SR_MPP_M       `PRIV_MACHINE
 
-`define SR_IP_MSIP      (1 << `IRQ_SOFT)
-`define SR_IP_MTIP      (1 << `IRQ_TIMER)
-`define SR_IP_MEIP      (1 << `IRQ_EXT)
+`define SR_SUM          (1 << 18)
+`define SR_SUM_R        18
+
+`define SR_SMODE_MASK   (`SR_UIE | `SR_SIE | `SR_UPIE | `SR_SPIE | `SR_SPP | `SR_SUM)
 
 //--------------------------------------------------------------------
 // Exception Causes
@@ -447,6 +488,7 @@
 `define MCAUSE_FAULT_STORE              ((0 << `MCAUSE_INT) | 7)
 `define MCAUSE_ECALL_U                  ((0 << `MCAUSE_INT) | 8)
 `define MCAUSE_ECALL_S                  ((0 << `MCAUSE_INT) | 9)
+`define MCAUSE_ECALL_H                  ((0 << `MCAUSE_INT) | 10)
 `define MCAUSE_ECALL_M                  ((0 << `MCAUSE_INT) | 11)
 `define MCAUSE_PAGE_FAULT_INST          ((0 << `MCAUSE_INT) | 12)
 `define MCAUSE_PAGE_FAULT_LOAD          ((0 << `MCAUSE_INT) | 13)

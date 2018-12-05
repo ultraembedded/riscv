@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.7
+//                            V0.8
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2018
 //
@@ -77,19 +77,19 @@ wire  [  4:0]  opcode_rd_idx_w;
 wire           fetch_accept_w;
 wire  [ 31:0]  fault_addr_w;
 wire  [ 55:0]  opcode_instr_w;
-wire           take_interrupt_w;
 wire  [ 31:0]  fetch_pc_w;
 wire           fault_load_w;
 wire           exec_stall_w;
 wire           fetch_fault_w;
 wire           fetch_valid_w;
-wire           branch_request_w;
 wire           csr_opcode_valid_w;
 wire  [  4:0]  opcode_rb_idx_w;
+wire           branch_csr_request_w;
 wire  [  4:0]  writeback_exec_idx_w;
 wire  [  4:0]  writeback_mem_idx_w;
 wire  [ 31:0]  opcode_pc_w;
 wire           lsu_opcode_valid_w;
+wire           writeback_csr_squash_w;
 wire  [ 31:0]  branch_pc_w;
 wire  [ 31:0]  fetch_instr_w;
 wire           lsu_stall_w;
@@ -103,10 +103,12 @@ wire  [ 31:0]  opcode_opcode_w;
 wire           fetch_branch_w;
 wire           fault_fetch_w;
 wire  [ 31:0]  writeback_exec_value_w;
-wire  [ 31:0]  csr_evec_w;
+wire  [ 31:0]  branch_csr_pc_w;
 wire  [ 31:0]  writeback_csr_value_w;
-wire  [ 31:0]  csr_epc_w;
+wire           branch_request_w;
+wire           writeback_mem_squash_w;
 wire  [ 31:0]  opcode_rb_operand_w;
+wire           writeback_exec_squash_w;
 wire  [ 31:0]  opcode_ra_operand_w;
 
 
@@ -125,6 +127,8 @@ riscv_csr u_csr
     ,.opcode_rb_idx_i(opcode_rb_idx_w)
     ,.opcode_ra_operand_i(opcode_ra_operand_w)
     ,.opcode_rb_operand_i(opcode_rb_operand_w)
+    ,.branch_exec_request_i(branch_request_w)
+    ,.branch_exec_pc_i(branch_pc_w)
     ,.cpu_id_i(cpu_id_i)
     ,.fault_fetch_i(fault_fetch_w)
     ,.fault_store_i(fault_store_w)
@@ -133,11 +137,11 @@ riscv_csr u_csr
 
     // Outputs
     ,.writeback_idx_o(writeback_csr_idx_w)
+    ,.writeback_squash_o(writeback_csr_squash_w)
     ,.writeback_value_o(writeback_csr_value_w)
     ,.stall_o(csr_stall_w)
-    ,.csr_epc_o(csr_epc_w)
-    ,.csr_evec_o(csr_evec_w)
-    ,.take_interrupt_o(take_interrupt_w)
+    ,.branch_csr_request_o(branch_csr_request_w)
+    ,.branch_csr_pc_o(branch_csr_pc_w)
 );
 
 
@@ -171,6 +175,7 @@ riscv_lsu u_lsu
     ,.mem_invalidate_o(mem_d_invalidate_o)
     ,.mem_flush_o(mem_d_flush_o)
     ,.writeback_idx_o(writeback_mem_idx_w)
+    ,.writeback_squash_o(writeback_mem_squash_w)
     ,.writeback_value_o(writeback_mem_value_w)
     ,.fault_store_o(fault_store_w)
     ,.fault_load_o(fault_load_w)
@@ -193,14 +198,13 @@ riscv_exec u_exec
     ,.opcode_rb_idx_i(opcode_rb_idx_w)
     ,.opcode_ra_operand_i(opcode_ra_operand_w)
     ,.opcode_rb_operand_i(opcode_rb_operand_w)
-    ,.csr_epc_i(csr_epc_w)
-    ,.csr_evec_i(csr_evec_w)
     ,.reset_vector_i(reset_vector_i)
 
     // Outputs
     ,.branch_request_o(branch_request_w)
     ,.branch_pc_o(branch_pc_w)
     ,.writeback_idx_o(writeback_exec_idx_w)
+    ,.writeback_squash_o(writeback_exec_squash_w)
     ,.writeback_value_o(writeback_exec_value_w)
     ,.stall_o(exec_stall_w)
 );
@@ -217,20 +221,24 @@ riscv_decode u_decode
     ,.fetch_fault_i(fetch_fault_w)
     ,.branch_request_i(branch_request_w)
     ,.branch_pc_i(branch_pc_w)
+    ,.branch_csr_request_i(branch_csr_request_w)
+    ,.branch_csr_pc_i(branch_csr_pc_w)
     ,.writeback_exec_idx_i(writeback_exec_idx_w)
+    ,.writeback_exec_squash_i(writeback_exec_squash_w)
     ,.writeback_exec_value_i(writeback_exec_value_w)
     ,.writeback_mem_idx_i(writeback_mem_idx_w)
+    ,.writeback_mem_squash_i(writeback_mem_squash_w)
     ,.writeback_mem_value_i(writeback_mem_value_w)
     ,.writeback_csr_idx_i(writeback_csr_idx_w)
+    ,.writeback_csr_squash_i(writeback_csr_squash_w)
     ,.writeback_csr_value_i(writeback_csr_value_w)
     ,.writeback_muldiv_idx_i(5'b0)
+    ,.writeback_muldiv_squash_i(1'b0)
     ,.writeback_muldiv_value_i(32'b0)
     ,.exec_stall_i(exec_stall_w)
     ,.lsu_stall_i(lsu_stall_w)
     ,.csr_stall_i(csr_stall_w)
     ,.muldiv_stall_i(1'b0)
-    ,.take_interrupt_i(take_interrupt_w)
-    ,.csr_evec_i(csr_evec_w)
 
     // Outputs
     ,.fetch_branch_o(fetch_branch_w)

@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.7
+//                            V0.8
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2018
 //
@@ -49,20 +49,24 @@ module riscv_decode
     ,input           fetch_fault_i
     ,input           branch_request_i
     ,input  [ 31:0]  branch_pc_i
+    ,input           branch_csr_request_i
+    ,input  [ 31:0]  branch_csr_pc_i
     ,input  [  4:0]  writeback_exec_idx_i
+    ,input           writeback_exec_squash_i
     ,input  [ 31:0]  writeback_exec_value_i
     ,input  [  4:0]  writeback_mem_idx_i
+    ,input           writeback_mem_squash_i
     ,input  [ 31:0]  writeback_mem_value_i
     ,input  [  4:0]  writeback_csr_idx_i
+    ,input           writeback_csr_squash_i
     ,input  [ 31:0]  writeback_csr_value_i
     ,input  [  4:0]  writeback_muldiv_idx_i
+    ,input           writeback_muldiv_squash_i
     ,input  [ 31:0]  writeback_muldiv_value_i
     ,input           exec_stall_i
     ,input           lsu_stall_i
     ,input           csr_stall_i
     ,input           muldiv_stall_i
-    ,input           take_interrupt_i
-    ,input  [ 31:0]  csr_evec_i
 
     // Outputs
     ,output          fetch_branch_o
@@ -100,20 +104,20 @@ reg         fault_fetch_q;
 
 reg [31:0]  scoreboard_q;
 reg         stall_scoreboard_r;
-reg         irq_pending_q;
-reg         irq_request_q;
-reg         irq_inst_q;
 
 wire [31:0] ra_value_w;
 wire [31:0] rb_value_w;
 
 wire        stall_input_w = stall_scoreboard_r || exec_stall_i || lsu_stall_i || csr_stall_i || muldiv_stall_i;
 
-wire        take_irq_w    = take_interrupt_i && !stall_input_w && !irq_pending_q && !irq_inst_q;
-
 //-------------------------------------------------------------
 // Instances
 //-------------------------------------------------------------
+wire [4:0] wb_exec_rd_w   = writeback_exec_idx_i   & {5{~writeback_exec_squash_i}};
+wire [4:0] wb_mem_rd_w    = writeback_mem_idx_i    & {5{~writeback_mem_squash_i}};
+wire [4:0] wb_csr_rd_w    = writeback_csr_idx_i    & {5{~writeback_csr_squash_i}};
+wire [4:0] wb_muldiv_rd_w = writeback_muldiv_idx_i & {5{~writeback_muldiv_squash_i}};
+
 riscv_regfile
 u_regfile
 (
@@ -121,13 +125,13 @@ u_regfile
     .rst_i(rst_i),
 
     // Write ports
-    .rd0_i(writeback_exec_idx_i),
+    .rd0_i(wb_exec_rd_w),
     .rd0_value_i(writeback_exec_value_i),
-    .rd1_i(writeback_mem_idx_i),
+    .rd1_i(wb_mem_rd_w),
     .rd1_value_i(writeback_mem_value_i),
-    .rd2_i(writeback_csr_idx_i),
+    .rd2_i(wb_csr_rd_w),
     .rd2_value_i(writeback_csr_value_i),
-    .rd3_i(writeback_muldiv_idx_i),
+    .rd3_i(wb_muldiv_rd_w),
     .rd3_value_i(writeback_muldiv_value_i),
 
     // Read ports
@@ -146,69 +150,34 @@ begin
     valid_q       <= 1'b0;
     pc_q          <= 32'b0;
     inst_q        <= 32'b0;
-    irq_pending_q <= 1'b0;
     fault_fetch_q <= 1'b0;
-    irq_request_q <= 1'b0;
-    irq_inst_q    <= 1'b0;
 end
-else
+// Branch request
+else if (branch_request_i || branch_csr_request_i)
 begin
-    irq_request_q <= 1'b0;
+    valid_q       <= 1'b0;
 
-    // Interrupt request (from exec stage)
-    if (take_irq_w)
-    begin
-        // Interrupt in-progress - stall fetch stage
-        irq_pending_q <= 1'b1;
+    if (branch_csr_request_i)
+        pc_q      <= branch_csr_pc_i;
+    else /*if (branch_request_i)*/
+        pc_q      <= branch_pc_i;
 
-        // Insert psuedo ISR instruction to modify CSR state
-        valid_q       <= 1'b1;
-        inst_q        <= 32'b0;
-        irq_inst_q    <= 1'b1;
+    inst_q        <= 32'b0;
+    fault_fetch_q <= 1'b0;
+end
+// Normal operation - decode not stalled
+else if (!stall_input_w)
+begin
+    valid_q       <= fetch_valid_i;
 
-        // Branch to ISR vector
-        irq_request_q <= 1'b1;
+    if (fetch_valid_i)
+        pc_q      <= fetch_pc_i;
+    // Current instruction accepted, increment PC to unexecuted instruction
+    else if (valid_q)
+        pc_q      <= pc_q + 32'd4;
 
-        // Branch - exec stage branch was missed due to IRQ, EPC should be branch target
-        if (branch_request_i)
-            pc_q      <= branch_pc_i;
-        // Stalled exec stage, hold current PC
-        else if (stall_input_w)
-            ;
-        // Valid fetch incoming, record the PC as the instruction was ignored
-        else if (fetch_valid_i)
-            pc_q      <= fetch_pc_i;
-        // Current instruction accepted, increment PC to unexecuted instruction
-        else if (valid_q)
-            pc_q <= pc_q + 32'd4;
-    end
-    // Insertion of IRQ pseudo instruction / IRQ branch request
-    else if (irq_pending_q && !stall_input_w)
-    begin
-        irq_pending_q <= 1'b0;
-
-        // No valid instruction...
-        valid_q       <= 1'b0;
-        inst_q        <= 32'b0;
-        irq_inst_q    <= 1'b0;
-    end
-    // Normal operation / Branch
-    else if (!stall_input_w || branch_request_i)
-    begin
-        valid_q       <= fetch_valid_i && !branch_request_i;
-
-        if (branch_request_i)
-            pc_q      <= branch_pc_i;
-        else if (fetch_valid_i)
-            pc_q      <= fetch_pc_i;
-        // Current instruction accepted, increment PC to unexecuted instruction
-        else if (valid_q)
-            pc_q <= pc_q + 32'd4;
-
-        inst_q        <= fetch_instr_i;
-        fault_fetch_q <= fetch_fault_i;
-        irq_inst_q    <= 1'b0;
-    end
+    inst_q        <= fetch_instr_i;
+    fault_fetch_q <= fetch_fault_i;
 end
 
 //-------------------------------------------------------------
@@ -302,7 +271,7 @@ assign opcode_instr_o[`ENUM_INST_SH]     = ((inst_q & `INST_SH_MASK) == `INST_SH
 assign opcode_instr_o[`ENUM_INST_SW]     = ((inst_q & `INST_SW_MASK) == `INST_SW);       // sw
 assign opcode_instr_o[`ENUM_INST_ECALL]  = ((inst_q & `INST_ECALL_MASK) == `INST_ECALL); // ecall
 assign opcode_instr_o[`ENUM_INST_EBREAK] = ((inst_q & `INST_EBREAK_MASK) == `INST_EBREAK); // ebreak
-assign opcode_instr_o[`ENUM_INST_MRET]   = ((inst_q & `INST_MRET_MASK) == `INST_MRET);   // mret
+assign opcode_instr_o[`ENUM_INST_ERET]   = ((inst_q & `INST_MRET_MASK) == `INST_MRET);   // mret / sret
 assign opcode_instr_o[`ENUM_INST_CSRRW]  = ((inst_q & `INST_CSRRW_MASK) == `INST_CSRRW); // csrrw
 assign opcode_instr_o[`ENUM_INST_CSRRS]  = ((inst_q & `INST_CSRRS_MASK) == `INST_CSRRS); // csrrs
 assign opcode_instr_o[`ENUM_INST_CSRRC]  = ((inst_q & `INST_CSRRC_MASK) == `INST_CSRRC); // csrrc
@@ -317,7 +286,7 @@ assign opcode_instr_o[`ENUM_INST_DIV]    = ((inst_q & `INST_DIV_MASK) == `INST_D
 assign opcode_instr_o[`ENUM_INST_DIVU]   = ((inst_q & `INST_DIVU_MASK) == `INST_DIVU);     // divu
 assign opcode_instr_o[`ENUM_INST_REM]    = ((inst_q & `INST_REM_MASK) == `INST_REM);       // rem
 assign opcode_instr_o[`ENUM_INST_REMU]   = ((inst_q & `INST_REMU_MASK) == `INST_REMU);     // remu
-assign opcode_instr_o[`ENUM_INST_INTR]   = irq_inst_q;
+assign opcode_instr_o[`ENUM_INST_SPARE]  = 1'b0;
 
 // Decode operands
 assign opcode_pc_o     = pc_q;
@@ -335,19 +304,19 @@ reg [31:0] opcode_rb_operand_r;
 always @ *
 begin
     // Bypass: Exec
-    if (writeback_exec_idx_i != 5'd0 && writeback_exec_idx_i == opcode_ra_idx_o)
+    if (!writeback_exec_squash_i && writeback_exec_idx_i != 5'd0 && writeback_exec_idx_i == opcode_ra_idx_o)
         opcode_ra_operand_r = writeback_exec_value_i;
     // Bypass: Mem
-    else if (writeback_mem_idx_i != 5'd0 && writeback_mem_idx_i == opcode_ra_idx_o)
+    else if (!writeback_mem_squash_i && writeback_mem_idx_i != 5'd0 && writeback_mem_idx_i == opcode_ra_idx_o)
         opcode_ra_operand_r = writeback_mem_value_i;
     else
         opcode_ra_operand_r = ra_value_w;
 
     // Bypass: Exec
-    if (writeback_exec_idx_i != 5'd0 && writeback_exec_idx_i == opcode_rb_idx_o)
+    if (!writeback_exec_squash_i && writeback_exec_idx_i != 5'd0 && writeback_exec_idx_i == opcode_rb_idx_o)
         opcode_rb_operand_r = writeback_exec_value_i;
     // Bypass: Mem
-    else if (writeback_mem_idx_i != 5'd0 && writeback_mem_idx_i == opcode_rb_idx_o)
+    else if (!writeback_mem_squash_i && writeback_mem_idx_i != 5'd0 && writeback_mem_idx_i == opcode_rb_idx_o)
         opcode_rb_operand_r = writeback_mem_value_i;
     else
         opcode_rb_operand_r = rb_value_w;
@@ -364,7 +333,7 @@ reg [31:0] current_scoreboard_r;
 
 always @ *
 begin
-    opcode_valid_r       = valid_q;
+    opcode_valid_r       = valid_q & ~branch_csr_request_i;
     stall_scoreboard_r   = 1'b0;
     current_scoreboard_r = scoreboard_q;
 
@@ -390,9 +359,9 @@ assign muldiv_opcode_valid_o  = opcode_valid_r && !exec_stall_i && !lsu_stall_i 
 //-------------------------------------------------------------
 // Fetch output
 //-------------------------------------------------------------
-assign fetch_branch_o    = irq_request_q | branch_request_i;
-assign fetch_branch_pc_o = irq_request_q ? csr_evec_i : branch_pc_i;
-assign fetch_accept_o    = !exec_stall_i && !stall_scoreboard_r && !lsu_stall_i && !csr_stall_i && !muldiv_stall_i && !irq_pending_q;
+assign fetch_branch_o    = branch_request_i | branch_csr_request_i;
+assign fetch_branch_pc_o = branch_csr_request_i ? branch_csr_pc_i : branch_pc_i;
+assign fetch_accept_o    = branch_csr_request_i || (!exec_stall_i && !stall_scoreboard_r && !lsu_stall_i && !csr_stall_i && !muldiv_stall_i);
 
 //-------------------------------------------------------------
 // Faults
@@ -400,7 +369,7 @@ assign fetch_accept_o    = !exec_stall_i && !stall_scoreboard_r && !lsu_stall_i 
 assign fault_fetch_o     = fault_fetch_q;
 
 // Bad opcode detection...
-wire fault_invalid_inst_w = opcode_valid_r ? ~(|opcode_instr_o[`ENUM_INST_INTR-1:0]) : 1'b0;
+wire fault_invalid_inst_w = opcode_valid_r ? ~(|opcode_instr_o[`ENUM_INST_SPARE-1:0]) : 1'b0;
 
 //-------------------------------------------------------------
 // get_reg_valid: Register contents valid
@@ -491,6 +460,7 @@ reg [79:0] dbg_inst_ra;
 reg [79:0] dbg_inst_rb;
 reg [79:0] dbg_inst_rd;
 reg [31:0] dbg_inst_imm;
+reg [31:0] dbg_inst_pc;
 
 `define DBG_IMM_IMM20     {opcode_opcode_o[31:12], 12'b0}
 `define DBG_IMM_IMM12     {{20{opcode_opcode_o[31]}}, opcode_opcode_o[31:20]}
@@ -505,9 +475,11 @@ begin
     dbg_inst_ra  = "-";
     dbg_inst_rb  = "-";
     dbg_inst_rd  = "-";
+    dbg_inst_pc  = 32'bx;
 
     if (opcode_valid_r)
     begin
+        dbg_inst_pc  = opcode_pc_o;
         dbg_inst_ra  = get_regname_str(opcode_ra_idx_o);
         dbg_inst_rb  = get_regname_str(opcode_rb_idx_o);
         dbg_inst_rd  = get_regname_str(opcode_rd_idx_o);
@@ -553,7 +525,7 @@ begin
             opcode_instr_o[`ENUM_INST_SW]     : dbg_inst_str = "sw";
             opcode_instr_o[`ENUM_INST_ECALL]  : dbg_inst_str = "ecall";
             opcode_instr_o[`ENUM_INST_EBREAK] : dbg_inst_str = "ebreak";
-            opcode_instr_o[`ENUM_INST_MRET]   : dbg_inst_str = "mret";
+            opcode_instr_o[`ENUM_INST_ERET]   : dbg_inst_str = "eret";
             opcode_instr_o[`ENUM_INST_CSRRW]  : dbg_inst_str = "csrrw";
             opcode_instr_o[`ENUM_INST_CSRRS]  : dbg_inst_str = "csrrs";
             opcode_instr_o[`ENUM_INST_CSRRC]  : dbg_inst_str = "csrrc";
@@ -568,7 +540,6 @@ begin
             opcode_instr_o[`ENUM_INST_DIVU]   : dbg_inst_str = "divu";
             opcode_instr_o[`ENUM_INST_REM]    : dbg_inst_str = "rem";
             opcode_instr_o[`ENUM_INST_REMU]   : dbg_inst_str = "remu";
-            opcode_instr_o[`ENUM_INST_INTR]   : dbg_inst_str = "interrupt";
         endcase
 
         case (1'b1)

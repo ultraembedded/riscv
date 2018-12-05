@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.7
+//                            V0.8
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2018
 //
@@ -53,6 +53,8 @@ module riscv_csr
     ,input  [  4:0]  opcode_rb_idx_i
     ,input  [ 31:0]  opcode_ra_operand_i
     ,input  [ 31:0]  opcode_rb_operand_i
+    ,input           branch_exec_request_i
+    ,input  [ 31:0]  branch_exec_pc_i
     ,input  [ 31:0]  cpu_id_i
     ,input           fault_fetch_i
     ,input           fault_store_i
@@ -61,11 +63,11 @@ module riscv_csr
 
     // Outputs
     ,output [  4:0]  writeback_idx_o
+    ,output          writeback_squash_o
     ,output [ 31:0]  writeback_value_o
     ,output          stall_o
-    ,output [ 31:0]  csr_epc_o
-    ,output [ 31:0]  csr_evec_o
-    ,output          take_interrupt_o
+    ,output          branch_csr_request_o
+    ,output [ 31:0]  branch_csr_pc_o
 );
 
 
@@ -78,17 +80,40 @@ module riscv_csr
 //-------------------------------------------------------------
 // Registers / Wires
 //-------------------------------------------------------------
-reg [31:0]  csr_epc_q;
-reg [31:0]  csr_cause_q;
+reg [31:0]  csr_mepc_q;
+reg [31:0]  csr_mcause_q;
 reg [31:0]  csr_sr_q;
-reg [31:0]  csr_evec_q;
-reg [31:0]  csr_ip_q;
-reg [31:0]  csr_ie_q;
-reg [31:0]  csr_time_q;
-reg [31:0]  csr_timecmp_q;
+reg [31:0]  csr_mevec_q;
+reg [31:0]  csr_mip_q;
+reg [31:0]  csr_mie_q;
+reg [31:0]  csr_mtime_q;
+reg [31:0]  csr_mtimecmp_q;
 reg [1:0]   csr_mpriv_q;
+reg [31:0]  csr_mscratch_q;
 
-reg         take_interrupt_q;
+
+//-------------------------------------------------------------
+// Exception source
+//-------------------------------------------------------------
+wire [31:0] exc_src_w;
+
+assign exc_src_w[`MCAUSE_MISALIGNED_FETCH]    = 1'b0;
+assign exc_src_w[`MCAUSE_FAULT_FETCH]         = fault_fetch_i;
+assign exc_src_w[`MCAUSE_ILLEGAL_INSTRUCTION] = 1'b0; // TODO
+assign exc_src_w[`MCAUSE_BREAKPOINT]          = opcode_valid_i & opcode_instr_i[`ENUM_INST_EBREAK];
+assign exc_src_w[`MCAUSE_MISALIGNED_LOAD]     = 1'b0;
+assign exc_src_w[`MCAUSE_FAULT_LOAD]          = fault_load_i;
+assign exc_src_w[`MCAUSE_MISALIGNED_STORE]    = 1'b0;
+assign exc_src_w[`MCAUSE_FAULT_STORE]         = fault_store_i;
+assign exc_src_w[`MCAUSE_ECALL_U]             = 1'b0;
+assign exc_src_w[`MCAUSE_ECALL_S]             = 1'b0;
+assign exc_src_w[`MCAUSE_ECALL_H]             = 1'b0;
+assign exc_src_w[`MCAUSE_ECALL_M]             = opcode_valid_i & opcode_instr_i[`ENUM_INST_ECALL];
+assign exc_src_w[`MCAUSE_PAGE_FAULT_INST]     = 1'b0;
+assign exc_src_w[`MCAUSE_PAGE_FAULT_LOAD]     = 1'b0;
+assign exc_src_w[`MCAUSE_PAGE_FAULT_LOAD + 1] = 1'b0;
+assign exc_src_w[`MCAUSE_PAGE_FAULT_STORE]    = 1'b0;
+assign exc_src_w[31:16] = 16'b0;
 
 //-------------------------------------------------------------
 // CSR handling
@@ -97,20 +122,32 @@ reg [31:0]  imm12_r;
 reg         set_r;
 reg         clr_r;
 
-reg [31:0]  csr_epc_r;
-reg [31:0]  csr_cause_r;
+reg [31:0]  csr_mepc_r;
+reg [31:0]  csr_mcause_r;
 reg [31:0]  csr_sr_r;
-reg [31:0]  csr_evec_r;
-reg [31:0]  csr_ip_r;
-reg [31:0]  csr_ie_r;
-reg [31:0]  csr_time_r;
-reg [31:0]  csr_timecmp_r;
+reg [31:0]  csr_mevec_r;
+reg [31:0]  csr_mip_r;
+reg [31:0]  csr_mie_r;
+reg [31:0]  csr_mtime_r;
+reg [31:0]  csr_mtimecmp_r;
 reg [1:0]   csr_mpriv_r;
+reg [31:0]  csr_mscratch_r;
+
+
 
 reg         take_intr_r;
 
 reg [31:0]  data_r;
 reg [31:0]  result_r;
+
+wire valid_unit_inst_w = opcode_valid_i &
+                         (opcode_instr_i[`ENUM_INST_CSRRW] | 
+                         opcode_instr_i[`ENUM_INST_CSRRS]  | 
+                         opcode_instr_i[`ENUM_INST_CSRRWI] | 
+                         opcode_instr_i[`ENUM_INST_CSRRSI] | 
+                         opcode_instr_i[`ENUM_INST_ECALL]  |
+                         opcode_instr_i[`ENUM_INST_EBREAK] |
+                         opcode_instr_i[`ENUM_INST_ERET]);
 
 always @ *
 begin
@@ -119,72 +156,131 @@ begin
     set_r = opcode_instr_i[`ENUM_INST_CSRRW] | opcode_instr_i[`ENUM_INST_CSRRS] | opcode_instr_i[`ENUM_INST_CSRRWI] | opcode_instr_i[`ENUM_INST_CSRRSI];
     clr_r = opcode_instr_i[`ENUM_INST_CSRRW] | opcode_instr_i[`ENUM_INST_CSRRC] | opcode_instr_i[`ENUM_INST_CSRRWI] | opcode_instr_i[`ENUM_INST_CSRRCI];
 
-    take_intr_r    = 1'b0;
-    csr_epc_r      = csr_epc_q;
-    csr_sr_r       = csr_sr_q;
-    csr_cause_r    = csr_cause_q;
-    csr_evec_r     = csr_evec_q;
-    csr_ip_r       = csr_ip_q;
-    csr_ie_r       = csr_ie_q;
-    csr_time_r     = csr_time_q;
-    csr_timecmp_r  = csr_timecmp_q;
-    csr_mpriv_r    = csr_mpriv_q;
+    take_intr_r     = 1'b0;
+    csr_mepc_r      = csr_mepc_q;
+    csr_sr_r        = csr_sr_q;
+    csr_mcause_r    = csr_mcause_q;
+    csr_mevec_r     = csr_mevec_q;
+    csr_mip_r       = csr_mip_q;
+    csr_mie_r       = csr_mie_q;
+    csr_mtime_r     = csr_mtime_q;
+    csr_mtimecmp_r  = csr_mtimecmp_q;
+    csr_mpriv_r     = csr_mpriv_q;
+    csr_mscratch_r  = csr_mscratch_q;
 
-    result_r       = 32'b0;
-    data_r         = 32'b0;
+    result_r        = 32'b0;
+    data_r          = 32'b0;
 
-    csr_time_r = csr_time_q + 32'd1;
+    csr_mtime_r     = csr_mtime_q + 32'd1;
 
     // Timer should generate a interrupt?
-    if (csr_time_r == csr_timecmp_r)
-        csr_ip_r =  csr_ip_r | `SR_IP_MTIP;
+    if (csr_mtime_r == csr_mtimecmp_r)
+        csr_mip_r[`SR_IP_MTIP_R] = 1'b1;
 
+    // External interrupts
+    if (intr_i)
+        csr_mip_r[`SR_IP_MEIP_R] = 1'b1;
+
+    take_intr_r = (((csr_mip_r & csr_mie_r) != 32'd0) && csr_sr_r[`SR_MIE_R]) ||
+                    fault_fetch_i || fault_store_i || fault_load_i;
+
+    // We will be taking an interrupt, record the reason
+    if (take_intr_r)
+    begin
+        // Taking interrupt instead of executing instruction handled
+        // by this functional unit?
+        if (valid_unit_inst_w)
+        begin
+            // Inst not executed, so this is what will be returned to
+            csr_mepc_r   = opcode_pc_i;
+        end
+        // Branch request executed in exec (not squashed)
+        else if (branch_exec_request_i)
+            csr_mepc_r   = branch_exec_pc_i;
+        // Valid instruction, executed by another unit
+        else if (opcode_valid_i)
+            csr_mepc_r   = opcode_pc_i + 32'd4;
+        // Valid instruction not ready, re-run it later
+        else
+            csr_mepc_r   = opcode_pc_i;
+
+        // Save interrupt / supervisor state
+        csr_sr_r[`SR_MPIE_R] = csr_sr_r[`SR_MIE_R];
+        csr_sr_r[`SR_MPP_R]  = csr_mpriv_q;
+
+        // Disable interrupts and enter supervisor mode
+        csr_sr_r[`SR_MIE_R]  = 1'b0;
+
+        if (fault_fetch_i)
+            csr_mcause_r = `MCAUSE_FAULT_FETCH;
+        else if (fault_load_i)
+            csr_mcause_r = `MCAUSE_FAULT_LOAD;
+        else if (fault_store_i)
+            csr_mcause_r = `MCAUSE_FAULT_STORE;
+        // NOTE: Lowest interrupt number wins
+        else if (((csr_mip_r & csr_mie_q) & (1 << `IRQ_M_SOFT)) != 32'd0)
+            csr_mcause_r = `MCAUSE_INTERRUPT + `IRQ_M_SOFT;
+        else if (((csr_mip_r & csr_mie_q) & (1 << `IRQ_M_TIMER)) != 32'd0)
+            csr_mcause_r = `MCAUSE_INTERRUPT + `IRQ_M_TIMER;
+        else if (((csr_mip_r & csr_mie_q) & (1 << `IRQ_M_EXT)) != 32'd0)
+            csr_mcause_r = `MCAUSE_INTERRUPT + `IRQ_M_EXT;
+    end
     // CSR modify instruction
-    if (opcode_valid_i && (set_r || clr_r))
+    else if (opcode_valid_i && (set_r || clr_r))
     begin
         data_r = (opcode_instr_i[`ENUM_INST_CSRRWI] | opcode_instr_i[`ENUM_INST_CSRRSI] | opcode_instr_i[`ENUM_INST_CSRRCI]) ?
                            {27'b0, opcode_ra_idx_i} : opcode_ra_operand_i;
 
         case (imm12_r[11:0])
         `CSR_MSCRATCH:
-            ;
+        begin
+            data_r   = data_r         & `CSR_MSCRATCH_MASK;
+            result_r = csr_mscratch_q & `CSR_MSCRATCH_MASK;
+
+            if (set_r && clr_r)
+                csr_mscratch_r = data_r;
+            else if (set_r)
+                csr_mscratch_r = csr_mscratch_r | data_r;
+            else if (clr_r)
+                csr_mscratch_r = csr_mscratch_r & ~data_r;
+        end
         `CSR_MEPC:
         begin
-            data_r = data_r & `CSR_MEPC_MASK;
-            result_r = csr_epc_q;
+            data_r   = data_r     & `CSR_MEPC_MASK;
+            result_r = csr_mepc_q & `CSR_MEPC_MASK;
             if (set_r && clr_r)
-                csr_epc_r = data_r;
+                csr_mepc_r = data_r;
             else if (set_r)
-                csr_epc_r = csr_epc_r | data_r;
+                csr_mepc_r = csr_mepc_r | data_r;
             else if (clr_r)
-                csr_epc_r = csr_epc_r & ~data_r;
+                csr_mepc_r = csr_mepc_r & ~data_r;
         end
         `CSR_MTVEC:
         begin
-            data_r = data_r & `CSR_MTVEC_MASK;
-            result_r = csr_evec_q;
+            data_r   = data_r      & `CSR_MTVEC_MASK;
+            result_r = csr_mevec_q & `CSR_MTVEC_MASK;
             if (set_r && clr_r)
-                csr_evec_r = data_r;
+                csr_mevec_r = data_r;
             else if (set_r)
-                csr_evec_r = csr_evec_r | data_r;
+                csr_mevec_r = csr_mevec_r | data_r;
             else if (clr_r)
-                csr_evec_r = csr_evec_r & ~data_r;
+                csr_mevec_r = csr_mevec_r & ~data_r;
         end
         `CSR_MCAUSE:
         begin
-            data_r = data_r & `CSR_MCAUSE_MASK;
-            result_r = csr_cause_q;
+            data_r   = data_r       & `CSR_MCAUSE_MASK;
+            result_r = csr_mcause_q & `CSR_MCAUSE_MASK;
             if (set_r && clr_r)
-                csr_cause_r = data_r;
+                csr_mcause_r = data_r;
             else if (set_r)
-                csr_cause_r = csr_cause_r | data_r;
+                csr_mcause_r = csr_mcause_r | data_r;
             else if (clr_r)
-                csr_cause_r = csr_cause_r & ~data_r;
+                csr_mcause_r = csr_mcause_r & ~data_r;
         end
         `CSR_MSTATUS:
         begin
-            data_r = data_r & `CSR_MSTATUS_MASK;
-            result_r = csr_sr_q;
+            data_r   = data_r   & `CSR_MSTATUS_MASK;
+            result_r = csr_sr_q & `CSR_MSTATUS_MASK;
             if (set_r && clr_r)
                 csr_sr_r = data_r;
             else if (set_r)
@@ -194,38 +290,38 @@ begin
         end
         `CSR_MIP:
         begin        
-            data_r = data_r & `CSR_MIP_MASK;
-            result_r = csr_ip_r; // Local version
+            data_r   = data_r    & `CSR_MIP_MASK;
+            result_r = csr_mip_r & `CSR_MIP_MASK; // Local version
             if (set_r && clr_r)
-                csr_ip_r = data_r;
+                csr_mip_r = data_r;
             else if (set_r)
-                csr_ip_r = csr_ip_r | data_r;
+                csr_mip_r = csr_mip_r | data_r;
             else if (clr_r)
-                csr_ip_r = csr_ip_r & ~data_r;
+                csr_mip_r = csr_mip_r & ~data_r;
         end
         `CSR_MIE:
         begin
-            data_r = data_r & `CSR_MIE_MASK;
-            result_r = csr_ie_q;
+            data_r   = data_r    & `CSR_MIE_MASK;
+            result_r = csr_mie_q & `CSR_MIE_MASK;
             if (set_r && clr_r)
-                csr_ie_r = data_r;
+                csr_mie_r = data_r;
             else if (set_r)
-                csr_ie_r = csr_ie_r | data_r;
+                csr_mie_r = csr_mie_r | data_r;
             else if (clr_r)
-                csr_ie_r = csr_ie_r & ~data_r;
+                csr_mie_r = csr_mie_r & ~data_r;
         end
         `CSR_MTIME:
         begin
-            data_r = data_r & `CSR_MTIME_MASK;
-            result_r      = csr_time_q; // Return flopped state
+            data_r   = data_r      & `CSR_MTIME_MASK;
+            result_r = csr_mtime_q & `CSR_MTIME_MASK; // Return flopped state
 
             // Non-std behaviour - write to CSR_TIME gives next interrupt threshold
             if (set_r && data_r != 32'b0)
             begin
-                csr_timecmp_r = data_r;
+                csr_mtimecmp_r = data_r;
 
                 // Clear interrupt pending
-                csr_ip_r = csr_ip_r & ~`SR_IP_MTIP;
+                csr_mip_r[`SR_IP_MTIP_R] = 1'b0;
             end
         end
         `CSR_MHARTID:
@@ -243,72 +339,33 @@ begin
     // System Call
     else if (opcode_valid_i && opcode_instr_i[`ENUM_INST_ECALL])
     begin
-        case (csr_mpriv_r)
-        `PRIV_MACHINE: csr_cause_r = `MCAUSE_ECALL_M;
-        `PRIV_SUPER:   csr_cause_r = `MCAUSE_ECALL_S;
-        default:       csr_cause_r = `MCAUSE_ECALL_U;
-        endcase
+            // Save interrupt / supervisor state
+            csr_sr_r[`SR_MPIE_R] = csr_sr_r[`SR_MIE_R];
+            csr_sr_r[`SR_MPP_R]  = csr_mpriv_q;
 
-        csr_epc_r   = opcode_pc_i;
+            // Disable interrupts and enter supervisor mode
+            csr_sr_r[`SR_MIE_R]  = 1'b0;
 
-        // Interrupt save and disable
-        csr_sr_r = csr_sr_r & ~`SR_MPIE;
-        csr_sr_r = csr_sr_r | (csr_sr_r[`SR_MIE_BIT] ? `SR_MPIE : 0);
-        csr_sr_r = csr_sr_r & ~`SR_MIE;
+            // Raise priviledge to machine level
+            csr_mpriv_r          = `PRIV_MACHINE;
 
-        // Record previous level
-        csr_sr_r[`SR_MPP_RNG] = csr_mpriv_r;
+            // Save PC of next instruction (not yet executed)
+            csr_mepc_r           = opcode_pc_i;
 
-        // Raise level to machine
-        csr_mpriv_r = `PRIV_MACHINE;
+            // Exception source
+            csr_mcause_r         = `MCAUSE_ECALL_U + {30'b0, csr_mpriv_q};
     end
     // Return from interrupt
-    else if (opcode_valid_i && opcode_instr_i[`ENUM_INST_MRET])
+    else if (opcode_valid_i && opcode_instr_i[`ENUM_INST_ERET])
     begin
-            // Set privilege level
-            csr_mpriv_r = csr_sr_r[`SR_MPP_RNG];
-
-            // Set next MPP to user mode
-            csr_sr_r[`SR_MPP_RNG] = `PRIV_USER;
+            // Set privilege level to previous MPP
+            csr_mpriv_r         = csr_sr_r[`SR_MPP_R];
 
             // Interrupt enable pop
-            csr_sr_r = csr_sr_r & ~`SR_MIE;
-            csr_sr_r = csr_sr_r | (csr_sr_r[`SR_MPIE_BIT] ? `SR_MIE : 0);
-            csr_sr_r = csr_sr_r | `SR_MPIE;
-    end
-    // Take interrupt
-    else if (opcode_valid_i && opcode_instr_i[`ENUM_INST_INTR])
-    begin
-        csr_epc_r   = opcode_pc_i;
+            csr_sr_r[`SR_MIE_R] = csr_sr_r[`SR_MPIE_R];
 
-        // Interrupt save and disable
-        csr_sr_r = csr_sr_r & ~`SR_MPIE;
-        csr_sr_r = csr_sr_r | (csr_sr_r[`SR_MIE_BIT] ? `SR_MPIE : 0);
-        csr_sr_r = csr_sr_r & ~`SR_MIE;
-    end
-
-    // External interrupts
-    csr_ip_r = csr_ip_r | (intr_i ? `SR_IP_MEIP : 0);
-
-    take_intr_r = (((csr_ip_r & csr_ie_q) != 32'd0) && csr_sr_r[`SR_MIE_BIT]) ||
-                    fault_fetch_i || fault_store_i || fault_load_i;
-
-    // We will be taking an interrupt, record the reason
-    if (take_intr_r)
-    begin
-        if (fault_fetch_i)
-            csr_cause_r = `MCAUSE_FAULT_FETCH;
-        else if (fault_load_i)
-            csr_cause_r = `MCAUSE_FAULT_LOAD;
-        else if (fault_store_i)
-            csr_cause_r = `MCAUSE_FAULT_STORE;
-        // NOTE: Lowest interrupt number wins
-        else if (((csr_ip_r & csr_ie_q) & (1 << `IRQ_SOFT)) != 32'd0)
-            csr_cause_r = `MCAUSE_INTERRUPT + `IRQ_SOFT;
-        else if (((csr_ip_r & csr_ie_q) & (1 << `IRQ_TIMER)) != 32'd0)
-            csr_cause_r = `MCAUSE_INTERRUPT + `IRQ_TIMER;
-        else if (((csr_ip_r & csr_ie_q) & (1 << `IRQ_EXT)) != 32'd0)
-            csr_cause_r = `MCAUSE_INTERRUPT + `IRQ_EXT;
+            // Set next MPP to user mode
+            csr_sr_r[`SR_MPP_R] = `SR_MPP_U;
     end
 end
 
@@ -317,35 +374,37 @@ end
 //-------------------------------------------------------------
 reg [  4:0]  writeback_idx_q;
 reg [ 31:0]  writeback_value_q;
+reg          writeback_squash_q;
 
 always @ (posedge clk_i or posedge rst_i)
 if (rst_i)
 begin
-    csr_epc_q         <= 32'b0;
-    csr_sr_q          <= 32'b0;
-    csr_cause_q       <= 32'b0;
-    csr_evec_q        <= 32'b0;
-    csr_ip_q          <= 32'b0;
-    csr_ie_q          <= 32'b0;
-    csr_time_q        <= 32'b0;
-    csr_timecmp_q     <= 32'b0;
-    csr_mpriv_q       <= `PRIV_MACHINE;
-    writeback_idx_q   <= 5'b0;
-    writeback_value_q <= 32'b0;
-    take_interrupt_q  <= 1'b0;
+    csr_mepc_q         <= 32'b0;
+    csr_sr_q           <= 32'b0;
+    csr_mcause_q       <= 32'b0;
+    csr_mevec_q        <= 32'b0;
+    csr_mip_q          <= 32'b0;
+    csr_mie_q          <= 32'b0;
+    csr_mtime_q        <= 32'b0;
+    csr_mtimecmp_q     <= 32'b0;
+    csr_mpriv_q        <= `PRIV_MACHINE;
+    csr_mscratch_q     <= 32'b0;
+    writeback_idx_q    <= 5'b0;
+    writeback_value_q  <= 32'b0;
+    writeback_squash_q <= 1'b0;
 end
 else
 begin
-    csr_epc_q         <= csr_epc_r;
-    csr_sr_q          <= csr_sr_r;
-    csr_cause_q       <= csr_cause_r;
-    csr_evec_q        <= csr_evec_r;
-    csr_ip_q          <= csr_ip_r;
-    csr_ie_q          <= csr_ie_r;
-    csr_time_q        <= csr_time_r;
-    csr_timecmp_q     <= csr_timecmp_r;
-    csr_mpriv_q       <= csr_mpriv_r;
-    take_interrupt_q  <= take_intr_r;
+    csr_mepc_q         <= csr_mepc_r;
+    csr_sr_q           <= csr_sr_r;
+    csr_mcause_q       <= csr_mcause_r;
+    csr_mevec_q        <= csr_mevec_r;
+    csr_mip_q          <= csr_mip_r;
+    csr_mie_q          <= csr_mie_r;
+    csr_mtime_q        <= csr_mtime_r;
+    csr_mtimecmp_q     <= csr_mtimecmp_r;
+    csr_mpriv_q        <= csr_mpriv_r;
+    csr_mscratch_q     <= csr_mscratch_r;
 
     if (opcode_valid_i && (set_r || clr_r))
     begin
@@ -357,6 +416,8 @@ begin
         writeback_idx_q   <= 5'b0;
         writeback_value_q <= 32'b0;
     end
+
+    writeback_squash_q <= (valid_unit_inst_w & take_intr_r);
 
 `ifdef verilator
     // CSR SIM_CTRL
@@ -378,14 +439,64 @@ begin
 `endif
 end
 
-assign writeback_idx_o   = writeback_idx_q;
-assign writeback_value_o = writeback_value_q;
+assign writeback_idx_o    = writeback_idx_q;
+assign writeback_value_o  = writeback_value_q;
+assign writeback_squash_o = writeback_squash_q;
 
-assign take_interrupt_o  = take_interrupt_q;
 assign stall_o           = 1'b0; // Not used
 
-assign csr_epc_o         = csr_epc_q;
-assign csr_evec_o        = csr_evec_q;
+//-------------------------------------------------------------
+// Execute - Branch operations
+//-------------------------------------------------------------
+reg        branch_r;
+reg [31:0] branch_target_r;
+
+always @ *
+begin
+    branch_r        = 1'b0;
+    branch_target_r = 32'b0;
+
+    if (take_intr_r)
+    begin
+        branch_r        = 1'b1;
+            branch_target_r = csr_mevec_q;
+    end
+    else if (opcode_instr_i[`ENUM_INST_ECALL])
+    begin
+        branch_r        = opcode_valid_i;
+            branch_target_r = csr_mevec_q;
+    end
+    else if (opcode_instr_i[`ENUM_INST_EBREAK])
+    begin
+        branch_r        = opcode_valid_i;
+            branch_target_r = csr_mevec_q;
+    end
+    else if (opcode_instr_i[`ENUM_INST_ERET])
+    begin
+        branch_r        = opcode_valid_i;
+
+            branch_target_r = csr_mepc_q;
+    end
+end
+
+reg        branch_q;
+reg [31:0] branch_target_q;
+
+always @ (posedge clk_i or posedge rst_i)
+if (rst_i)
+begin
+    branch_target_q <= 32'b0;
+    branch_q        <= 1'b0;
+end
+else
+begin
+    branch_target_q <= branch_target_r;
+    branch_q        <= branch_r;
+end
+
+assign branch_csr_request_o = branch_q;
+assign branch_csr_pc_o      = branch_target_q;
+
 
 
 endmodule

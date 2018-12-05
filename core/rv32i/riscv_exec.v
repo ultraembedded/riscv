@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.7
+//                            V0.8
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2018
 //
@@ -52,14 +52,13 @@ module riscv_exec
     ,input  [  4:0]  opcode_rb_idx_i
     ,input  [ 31:0]  opcode_ra_operand_i
     ,input  [ 31:0]  opcode_rb_operand_i
-    ,input  [ 31:0]  csr_epc_i
-    ,input  [ 31:0]  csr_evec_i
     ,input  [ 31:0]  reset_vector_i
 
     // Outputs
     ,output          branch_request_o
     ,output [ 31:0]  branch_pc_o
     ,output [  4:0]  writeback_idx_o
+    ,output          writeback_squash_o
     ,output [ 31:0]  writeback_value_o
     ,output          stall_o
 );
@@ -359,21 +358,6 @@ begin
         branch_r      = (opcode_ra_operand_i < opcode_rb_operand_i);
     else if (opcode_instr_i[`ENUM_INST_BGEU]) // bgeu
         branch_r      = (opcode_ra_operand_i >= opcode_rb_operand_i);
-    else if (opcode_instr_i[`ENUM_INST_ECALL])
-    begin
-        branch_r        = 1'b1;
-        branch_target_r = csr_evec_i;
-    end
-    else if (opcode_instr_i[`ENUM_INST_EBREAK])
-    begin
-        branch_r        = 1'b1;
-        branch_target_r = csr_evec_i;
-    end
-    else if (opcode_instr_i[`ENUM_INST_MRET])
-    begin
-        branch_r        = 1'b1;
-        branch_target_r = csr_epc_i;
-    end
 end
 
 assign branch_request_o = branch_r && (opcode_valid_i || reset_q);
@@ -408,8 +392,9 @@ end
 //-------------------------------------------------------------
 // Outputs
 //-------------------------------------------------------------
-assign writeback_idx_o = rd_x_q;
-assign stall_o         = 1'b0; // Not used
+assign writeback_idx_o    = rd_x_q;
+assign writeback_squash_o = 1'b0;
+assign stall_o            = 1'b0; // Not used
 
 //-------------------------------------------------------------
 // Debug

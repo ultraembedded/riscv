@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.7
+//                            V0.8
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2018
 //
@@ -55,6 +55,7 @@ module riscv_muldiv
 
     // Outputs
     ,output [  4:0]  writeback_idx_o
+    ,output          writeback_squash_o
     ,output [ 31:0]  writeback_value_o
     ,output          stall_o
 );
@@ -259,8 +260,9 @@ else if (div_complete_w)
 else
     wb_result_q <= mult_result_q;
 
-assign writeback_value_o = wb_result_q;
-assign writeback_idx_o   = wb_rd_q;
+assign writeback_value_o  = wb_result_q;
+assign writeback_idx_o    = wb_rd_q;
+assign writeback_squash_o = 1'b0;
 
 
 

@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.7
+//                            V0.8
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2018
 //
@@ -68,6 +68,7 @@ module riscv_lsu
     ,output          mem_invalidate_o
     ,output          mem_flush_o
     ,output [  4:0]  writeback_idx_o
+    ,output          writeback_squash_o
     ,output [ 31:0]  writeback_value_o
     ,output          fault_store_o
     ,output          fault_load_o
