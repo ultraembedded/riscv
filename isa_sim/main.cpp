@@ -62,7 +62,7 @@ int main(int argc, char *argv[])
     exitcode = riscv_main(sim, argc, argv);
 
     // Show execution stats
-    sim->DumpStats();
+    sim->stats_dump();
 
     delete sim;
     sim = NULL;

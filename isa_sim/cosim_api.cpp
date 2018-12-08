@@ -40,6 +40,7 @@
 //-----------------------------------------------------------------
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "cosim_api.h"
 
 cosim * cosim::s_instance = NULL;
@@ -222,12 +223,12 @@ void cosim::enable_trace(uint32_t mask)
 //--------------------------------------------------------------------
 bool cosim::create_memory(uint32_t addr, uint32_t size, uint8_t *mem /*= NULL*/)
 {
-    bool error = false;
+    bool ok = true;
 
     for (std::vector<cosim_mem_item>::iterator it = m_mem.begin() ; it != m_mem.end(); ++it)
-        error |= it->mem->create_memory(addr, size, mem);
+        ok &= it->mem->create_memory(addr, size, mem);
 
-    return error;
+    return ok;
 }
 //--------------------------------------------------------------------
 // valid_addr:
@@ -257,4 +258,79 @@ uint8_t cosim::read(uint32_t addr)
          if (addr >= it->base && addr < (it->base + it->size))
             return it->mem->read(addr);
     return 0;
+}
+//--------------------------------------------------------------------
+// write_word: Write word
+//--------------------------------------------------------------------
+void cosim::write_word(uint32_t addr, uint32_t data)
+{
+    for (int i=0;i<4;i++)
+        write(addr + i,data >> (i*8));
+}
+//--------------------------------------------------------------------
+// read_word: Read word
+//--------------------------------------------------------------------
+uint32_t cosim::read_word(uint32_t addr)
+{
+    uint32_t data = 0;
+    for (int i=0;i<4;i++)
+        data |= ((uint32_t)read(addr + i)) << (i*8);
+    return data;
+}
+//--------------------------------------------------------------------
+// at_exit: On simulation exit
+//--------------------------------------------------------------------
+void cosim::at_exit(uint32_t exit_code)
+{
+    if (m_dump_file)
+    {
+        bool sig_txt_file = false;
+
+        const char *ext = strrchr(m_dump_file, '.');
+        sig_txt_file = ext && !strcmp(ext, ".output");
+
+        int  dump_size  = m_dump_end - m_dump_start;
+
+        printf("Dumping post simulation memory: 0x%08x-0x%08x (%d bytes) [%s]\n", m_dump_start, m_dump_end, dump_size, m_dump_file);
+
+        uint8_t *buffer = new uint8_t[dump_size];
+        for (int i=0;i<dump_size;i++)
+            buffer[i] = cosim::instance()->read((uint32_t)m_dump_start + i);
+
+        // Binary block
+        if (!sig_txt_file)
+        {
+            // Write file data
+            FILE *f = fopen(m_dump_file, "wb");
+            if (f)
+            {
+                fwrite(buffer, 1, dump_size, f);
+                fclose(f);
+            }
+        }
+        // Signature text file
+        else
+        {
+            // Write file data
+            FILE *f = fopen(m_dump_file, "w");
+            if (f)
+            {
+                for (int r=0;r<(dump_size/16);r++)
+                {
+                    for (int c=0;c<16;c+=4)
+                    {
+                        uint32_t w = *(uint32_t*)&buffer[(r*16) + (12-c)];
+                        fprintf(f, "%08x", w);
+                    }
+                    fprintf(f, "\n");
+                }
+                fclose(f);
+            }
+        }
+
+        delete buffer;
+        buffer = NULL;
+    }
+
+    exit(exit_code);
 }

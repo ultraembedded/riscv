@@ -100,6 +100,7 @@ enum eInstructions
     ENUM_INST_ECALL,
     ENUM_INST_EBREAK,
     ENUM_INST_MRET,
+    ENUM_INST_SRET,
     ENUM_INST_CSRRW,
     ENUM_INST_CSRRS,
     ENUM_INST_CSRRC,
@@ -114,6 +115,8 @@ enum eInstructions
     ENUM_INST_DIVU,
     ENUM_INST_REM,
     ENUM_INST_REMU,
+    ENUM_INST_FENCE,
+    ENUM_INST_WFI,
     ENUM_INST_MAX
 };
 
@@ -160,6 +163,7 @@ static const char * inst_names[ENUM_INST_MAX+1] =
     [ENUM_INST_ECALL] = "ecall",
     [ENUM_INST_EBREAK] = "ebreak",
     [ENUM_INST_MRET] = "mret",
+    [ENUM_INST_SRET] = "sret",
     [ENUM_INST_CSRRW] = "csrw",
     [ENUM_INST_CSRRS] = "csrs",
     [ENUM_INST_CSRRC] = "csrc",
@@ -174,6 +178,8 @@ static const char * inst_names[ENUM_INST_MAX+1] =
     [ENUM_INST_DIVU] = "divu",
     [ENUM_INST_REM] = "rem",
     [ENUM_INST_REMU] = "remu",
+    [ENUM_INST_FENCE] = "fence",
+    [ENUM_INST_WFI] = "wfi",
     [ENUM_INST_MAX] = ""
 };
 
@@ -337,9 +343,29 @@ static const char * inst_names[ENUM_INST_MAX+1] =
 #define INST_EBREAK 0x100073
 #define INST_EBREAK_MASK 0xffffffff
 
+// sfence
+#define INST_SFENCE 0x12000073
+#define INST_SFENCE_MASK 0xfe007fff
+
+// fence
+#define INST_FENCE 0xf
+#define INST_FENCE_MASK 0x707f
+
+// ifence
+#define INST_IFENCE 0x100f
+#define INST_IFENCE_MASK 0x707f
+
 // mret
 #define INST_MRET 0x30200073
 #define INST_MRET_MASK 0xffffffff
+
+// sret
+#define INST_SRET 0x10200073
+#define INST_SRET_MASK 0xffffffff
+
+// uret
+//#define INST_URET 0x200073
+//#define INST_URET_MASK 0xffffffff
 
 // csrrw
 #define INST_CSRRW 0x1073
@@ -397,6 +423,10 @@ static const char * inst_names[ENUM_INST_MAX+1] =
 #define INST_REMU 0x2007033
 #define INST_REMU_MASK 0xfe00707f
 
+// wfi
+#define INST_WFI 0x10500073
+#define INST_WFI_MASK 0xffff8fff
+
 #define IS_LOAD_INST(a)     (((a) & 0x7F) == 0x03)
 #define IS_STORE_INST(a)    (((a) & 0x7F) == 0x23)
 #define IS_BRANCH_INST(a)   ((((a) & 0x7F) == 0x6f) || \
@@ -413,7 +443,6 @@ static const char * inst_names[ENUM_INST_MAX+1] =
                             (((a) & INST_LUI_MASK) == INST_LUI) || \
                             (((a) & INST_AUIPC_MASK) == INST_AUIPC))
 
-
 //--------------------------------------------------------------------
 // Privilege levels
 //--------------------------------------------------------------------
@@ -422,14 +451,59 @@ static const char * inst_names[ENUM_INST_MAX+1] =
 #define PRIV_MACHINE      3
 
 //--------------------------------------------------------------------
+// Status Register
+//--------------------------------------------------------------------
+#define SR_UIE          (1 << 0)
+#define SR_SIE          (1 << 1)
+#define SR_MIE          (1 << 3)
+#define SR_UPIE         (1 << 4)
+#define SR_SPIE         (1 << 5)
+#define SR_MPIE         (1 << 7)
+#define SR_SPP          (1 << 8)
+
+#define SR_MPP_SHIFT    11
+#define SR_MPP_MASK     0x3
+#define SR_MPP          (SR_MPP_MASK  << SR_MPP_SHIFT)
+#define SR_MPP_U        (PRIV_USER    << SR_MPP_SHIFT)
+#define SR_MPP_S        (PRIV_SUPER   << SR_MPP_SHIFT)
+#define SR_MPP_M        (PRIV_MACHINE << SR_MPP_SHIFT)
+
+#define SR_GET_MPP(val) (((val) >> SR_MPP_SHIFT) & SR_MPP_MASK)
+
+#define SR_SUM          (1 << 18)
+
+#define SR_SMODE_MASK   (SR_UIE | SR_SIE | SR_UPIE | SR_SPIE | SR_SPP | SR_SUM)
+
+//--------------------------------------------------------------------
 // IRQ Numbers
 //--------------------------------------------------------------------
-#define IRQ_SOFT          3
-#define IRQ_TIMER         7
-#define IRQ_EXT           11
-#define IRQ_MIN           (IRQ_SOFT)
-#define IRQ_MAX           (IRQ_EXT + 1)
-#define IRQ_MASK          ((1 << IRQ_SOFT) | (1 << IRQ_TIMER) | (1 << IRQ_EXT))
+#define IRQ_S_SOFT   1
+#define IRQ_M_SOFT   3
+#define IRQ_S_TIMER  5
+#define IRQ_M_TIMER  7
+#define IRQ_S_EXT    9
+#define IRQ_M_EXT    11
+#define IRQ_MIN      (IRQ_S_SOFT)
+#define IRQ_MAX      (IRQ_M_EXT + 1)
+#define IRQ_MASK     ((1 << IRQ_M_EXT)   | (1 << IRQ_S_EXT)   | \
+                      (1 << IRQ_M_TIMER) | (1 << IRQ_S_TIMER) | \
+                      (1 << IRQ_M_SOFT)  | (1 << IRQ_S_SOFT))
+
+#define SR_IP_MSIP      (1 << IRQ_M_SOFT)
+#define SR_IP_MTIP      (1 << IRQ_M_TIMER)
+#define SR_IP_MEIP      (1 << IRQ_M_EXT)
+#define SR_IP_SSIP      (1 << IRQ_S_SOFT)
+#define SR_IP_STIP      (1 << IRQ_S_TIMER)
+#define SR_IP_SEIP      (1 << IRQ_S_EXT)
+
+//--------------------------------------------------------------------
+// SATP CSR bits
+//--------------------------------------------------------------------
+#define SATP_PPN_SHIFT    0
+#define SATP_PPN_MASK     0x3FFFFF
+#define SATP_ASID_SHIFT   22
+#define SATP_ASID_MASK    0x1FF
+#define SATP_MODE         0x80000000
 
 //--------------------------------------------------------------------
 // CSR Registers - Simulation control
@@ -443,16 +517,16 @@ static const char * inst_names[ENUM_INST_MAX+1] =
     #define CSR_SIM_PRINTF     (5 << 24)
 
 //--------------------------------------------------------------------
-// CSR Registers
+// CSR Registers - Machine
 //--------------------------------------------------------------------
 #define CSR_MSTATUS       0x300
 #define CSR_MSTATUS_MASK  0xFFFFFFFF
-//#define CSR_MISA          0x301
-//#define CSR_MISA_MASK     0xFFFFFFFF
-//#define CSR_MEDELEG       0x302
-//#define CSR_MEDELEG_MASK  0xFFFFFFFF
-//#define CSR_MIDELEG       0x303
-//#define CSR_MIDELEG_MASK  0xFFFFFFFF
+#define CSR_MISA          0x301
+#define CSR_MISA_MASK     0xFFFFFFFF
+#define CSR_MEDELEG       0x302
+#define CSR_MEDELEG_MASK  0xFFFFFFFF
+#define CSR_MIDELEG       0x303
+#define CSR_MIDELEG_MASK  0xFFFFFFFF
 #define CSR_MIE           0x304
 #define CSR_MIE_MASK      IRQ_MASK
 #define CSR_MTVEC         0x305
@@ -463,33 +537,77 @@ static const char * inst_names[ENUM_INST_MAX+1] =
 #define CSR_MEPC_MASK     0xFFFFFFFF
 #define CSR_MCAUSE        0x342
 #define CSR_MCAUSE_MASK   0x8000000F
-//#define CSR_MBADADDR      0x343
-//#define CSR_MBADADDR_MASK 0xFFFFFFFF
+//#define CSR_MTVAL       0x343
+//#define CSR_MTVAL_MASK  0xFFFFFFFF
 #define CSR_MIP           0x344
 #define CSR_MIP_MASK      IRQ_MASK
 #define CSR_MTIME         0xc01
 #define CSR_MTIME_MASK    0xFFFFFFFF
+#define CSR_MTIMEH        0xc81
+#define CSR_MTIMEH_MASK   0xFFFFFFFF
+#define CSR_MHARTID       0xF14
+#define CSR_MHARTID_MASK  0xFFFFFFFF
+    #define MHARTID_VALUE 0
 
+#define CSR_PMPCFG0           0x3a0 // pmpcfg0
+#define CSR_PMPCFG0_MASK      0xFFFFFFFF
+#define CSR_PMPCFG1           0x3a1 // pmpcfg1
+#define CSR_PMPCFG1_MASK      0xFFFFFFFF
+#define CSR_PMPCFG2           0x3a2 // pmpcfg2
+#define CSR_PMPCFG2_MASK      0xFFFFFFFF
+#define CSR_PMPADDR0          0x3b0 // pmpaddr0
+#define CSR_PMPADDR0_MASK     0xFFFFFFFF
+
+#define CSR_DFLUSH            CSR_PMPCFG0
+#define CSR_DFLUSH_MASK       CSR_PMPCFG0_MASK
+#define CSR_DWRITEBACK        CSR_PMPCFG1
+#define CSR_DWRITEBACK_MASK   CSR_PMPCFG1_MASK
+#define CSR_DINVALIDATE       CSR_PMPCFG2
+#define CSR_DINVALIDATE_MASK  CSR_PMPCFG2_MASK
 
 //--------------------------------------------------------------------
-// Status Register
+// CSR Registers - Supervisor
 //--------------------------------------------------------------------
-//#define SR_UIE        (1 << 0)
-//#define SR_SIE        (1 << 1)
-#define SR_MIE          (1 << 3)
-//#define SR_UPIE       (1 << 4)
-//#define SR_SPIE       (1 << 5)
-#define SR_MPIE         (1 << 7)
+#define CSR_SSTATUS       0x100
+#define CSR_SSTATUS_MASK  SR_SMODE_MASK
+#define CSR_SIE           0x104
+#define CSR_SIE_MASK      0xFFFFFFFF  // TODO:
+#define CSR_STVEC         0x105
+#define CSR_STVEC_MASK    0xFFFFFFFF
+//#define CSR_SCOUNTEREN  0x106
+#define CSR_SSCRATCH      0x140
+#define CSR_SSCRATCH_MASK 0xFFFFFFFF
+#define CSR_SEPC          0x141
+#define CSR_SEPC_MASK     0xFFFFFFFF
+#define CSR_SCAUSE        0x142
+#define CSR_SCAUSE_MASK   0xFFFFFFFF
+#define CSR_STVAL         0x143
+#define CSR_STVAL_MASK    0xFFFFFFFF
+#define CSR_SIP           0x144
+#define CSR_SIP_MASK      0xFFFFFFFF  // TODO:
+#define CSR_SPTBR         0x180
+#define CSR_SPTBR_MASK    0xFFFFFFFF
+#define CSR_SATP          0x180
+#define CSR_SATP_MASK     0xFFFFFFFF
 
-#define SR_MPP_SHIFT    11
-#define SR_MPP_MASK     0x3
-#define SR_MPP          (SR_MPP_MASK  << SR_MPP_SHIFT)
-#define SR_MPP_U        (PRIV_USER    << SR_MPP_SHIFT)
-#define SR_MPP_M        (PRIV_MACHINE << SR_MPP_SHIFT)
+//--------------------------------------------------------------------
+// ISA Register
+//--------------------------------------------------------------------
+#define MISA_RV32 (1 << (32 - 2))
 
-#define SR_IP_MSIP      (1 << IRQ_SOFT)
-#define SR_IP_MTIP      (1 << IRQ_TIMER)
-#define SR_IP_MEIP      (1 << IRQ_EXT)
+#define MISA_RV(x) (1 << (x - 'A'))
+
+#define MISA_RVI MISA_RV('I')
+#define MISA_RVE MISA_RV('E')
+#define MISA_RVM MISA_RV('M')
+#define MISA_RVA MISA_RV('A')
+#define MISA_RVF MISA_RV('F')
+#define MISA_RVD MISA_RV('D')
+#define MISA_RVC MISA_RV('C')
+#define MISA_RVS MISA_RV('S')
+#define MISA_RVU MISA_RV('U')
+
+#define MISA_VALUE (MISA_RV32 | MISA_RVI | MISA_RVM | MISA_RVS | MISA_RVU)
 
 //--------------------------------------------------------------------
 // Exception Causes
@@ -504,10 +622,41 @@ static const char * inst_names[ENUM_INST_MAX+1] =
 #define MCAUSE_MISALIGNED_STORE         ((0 << MCAUSE_INT) | 6)
 #define MCAUSE_FAULT_STORE              ((0 << MCAUSE_INT) | 7)
 #define MCAUSE_ECALL_U                  ((0 << MCAUSE_INT) | 8)
+#define MCAUSE_ECALL_S                  ((0 << MCAUSE_INT) | 9)
+#define MCAUSE_ECALL_M                  ((0 << MCAUSE_INT) | 11)
 #define MCAUSE_PAGE_FAULT_INST          ((0 << MCAUSE_INT) | 12)
 #define MCAUSE_PAGE_FAULT_LOAD          ((0 << MCAUSE_INT) | 13)
 #define MCAUSE_PAGE_FAULT_STORE         ((0 << MCAUSE_INT) | 15)
 #define MCAUSE_INTERRUPT                (1 << MCAUSE_INT)
 
-#endif
+//--------------------------------------------------------------------
+// MMU Defs
+//--------------------------------------------------------------------
+#define MMU_LEVELS          2
+#define MMU_PTIDXBITS       10
+#define MMU_PTESIZE         4
+#define MMU_PGSHIFT         (MMU_PTIDXBITS + 2)
+#define MMU_PGSIZE          (1 << MMU_PGSHIFT)
+#define MMU_VPN_BITS        (MMU_PTIDXBITS * MMU_LEVELS)
+#define MMU_PPN_BITS        (32 - MMU_PGSHIFT)
+#define MMU_VA_BITS         (MMU_VPN_BITS + MMU_PGSHIFT)
 
+#define PAGE_PRESENT   (1 << 0)
+#define PAGE_READ      (1 << 1)    // Readable
+#define PAGE_WRITE     (1 << 2)    // Writable
+#define PAGE_EXEC      (1 << 3)    // Executable
+#define PAGE_USER      (1 << 4)    // User
+#define PAGE_GLOBAL    (1 << 5)    // Global
+#define PAGE_ACCESSED  (1 << 6)    // Set by hardware on any access
+#define PAGE_DIRTY     (1 << 7)    // Set by hardware on any write
+#define PAGE_SOFT      (3 << 8)    // Reserved for software
+
+#define PAGE_FLAGS     (0x3FF)
+
+#define PAGE_SPECIAL   _PAGE_SOFT
+#define PAGE_TABLE(pte)     (((pte) & (PAGE_PRESENT | PAGE_READ | PAGE_WRITE | PAGE_EXEC)) == PAGE_PRESENT)
+
+#define PAGE_PFN_SHIFT 10
+#define PAGE_SIZE      4096
+
+#endif

@@ -13,5 +13,6 @@ typedef int (*cb_mem_load)(void *arg, uint32_t addr, uint8_t data);
 // Functions
 //-------------------------------------------------------------
 int  elf_load(const char *filename, cb_mem_create fn_create, cb_mem_load fn_load, void *arg, uint32_t *start_addr);
+long elf_get_symbol(const char *filename, const char *symname);
 
 #endif

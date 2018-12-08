@@ -75,10 +75,18 @@ int riscv_main(cosim_cpu_api *sim, int argc, char *argv[])
     char *filename = NULL;
     int help = 0;
     int trace = 0;
-    unsigned int trace_mask = 1;
+    uint32_t trace_mask = 1;
+    uint32_t stop_pc = 0xFFFFFFFF;
+    uint32_t trace_pc = 0xFFFFFFFF;
+    uint32_t mem_base = 0x00000000;
+    uint32_t mem_size = (32 * 1024 * 1024);
+    bool explicit_mem = false;
+    char *   dump_file      = NULL;
+    char *   dump_sym_start = NULL;
+    char *   dump_sym_end   = NULL;
     int c;
 
-    while ((c = getopt (argc, argv, "t:v:f:c:")) != -1)
+    while ((c = getopt (argc, argv, "t:v:f:c:r:d:b:s:e:p:j:k:")) != -1)
     {
         switch(c)
         {
@@ -88,11 +96,34 @@ int riscv_main(cosim_cpu_api *sim, int argc, char *argv[])
             case 'v':
                 trace_mask = strtoul(optarg, NULL, 0);
                 break;
+            case 'r':
+                stop_pc = strtoul(optarg, NULL, 0);
+                break;
             case 'f':
                 filename = optarg;
                 break;
             case 'c':
                 max_cycles = (int)strtoul(optarg, NULL, 0);
+                break;
+            case 'b':
+                mem_base = strtoul(optarg, NULL, 0);
+                explicit_mem = true;
+                break;
+            case 's':
+                mem_size = strtoul(optarg, NULL, 0);
+                explicit_mem = true;
+                break;
+            case 'e':
+                trace_pc = strtoul(optarg, NULL, 0);
+                break;
+            case 'p':
+                dump_file = optarg;
+                break;
+            case 'j':
+                dump_sym_start = optarg;
+                break;
+            case 'k':
+                dump_sym_end = optarg;
                 break;
             case '?':
             default:
@@ -108,7 +139,20 @@ int riscv_main(cosim_cpu_api *sim, int argc, char *argv[])
         fprintf (stderr,"-t [0/1]        = Enable program trace\n");
         fprintf (stderr,"-v 0xX          = Trace Mask\n");
         fprintf (stderr,"-c nnnn         = Max instructions to execute\n");
+        fprintf (stderr,"-r 0xnnnn       = Stop at PC address\n");
+        fprintf (stderr,"-e 0xnnnn       = Trace from PC address\n");
+        fprintf (stderr,"-b 0xnnnn       = Memory base address (for binary loads)\n");
+        fprintf (stderr,"-s nnnn         = Memory size (for binary loads)\n");
+        fprintf (stderr,"-p dumpfile.bin = Post simulation memory dump file\n");
+        fprintf (stderr,"-j sym_name     = Symbol for memory dump start\n");
+        fprintf (stderr,"-k sym_name     = Symbol for memory dump end\n");
         exit(-1);
+    }
+
+    if (explicit_mem)
+    {
+        printf("MEM: Create memory 0x%08x-%08x\n", mem_base, mem_base + mem_size-1);
+        mem_create(NULL, mem_base, mem_size);
     }
 
     uint32_t start_addr = 0;
@@ -117,6 +161,14 @@ int riscv_main(cosim_cpu_api *sim, int argc, char *argv[])
     if (elf_load(filename, mem_create, mem_load, sim, &start_addr))
     {
         printf("Starting from 0x%08x\n", start_addr);
+
+        // Register dump handler
+        if (dump_file)
+        {
+            cosim::instance()->dump_on_exit(dump_file, 
+                         (uint32_t)elf_get_symbol(filename, dump_sym_start),
+                         (uint32_t)elf_get_symbol(filename, dump_sym_end));
+        }
 
         // Reset CPU to given start PC
         sim->reset(start_addr);
@@ -127,14 +179,22 @@ int riscv_main(cosim_cpu_api *sim, int argc, char *argv[])
 
         _cycles = 0;
 
-        while (!sim->get_fault() && !sim->get_stopped())
+        uint32_t current_pc = 0;
+        while (!sim->get_fault() && !sim->get_stopped() &&  current_pc != stop_pc)
         {
+            current_pc = sim->get_pc();
             sim->step();
             _cycles++;
 
             if (max_cycles != -1 && max_cycles == _cycles)
                 break;
+
+            // Turn trace on
+            if (trace_pc == current_pc)
+                sim->enable_trace(trace_mask);
         }   
+
+        cosim::instance()->at_exit(sim->get_fault());
     }
     else
         fprintf (stderr,"Error: Could not open %s\n", filename);

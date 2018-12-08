@@ -3,35 +3,68 @@
 ###############################################################################
 
 # Target
-TARGET		= riscv-sim
+TARGET	   ?= riscv-sim
+TARGET_LIB ?= libisa_sim.a
 
 # Options
+MMU        ?= yes
+
 CFLAGS	    = -O2 -fPIC
+ifeq ($(MMU), yes)
+CFLAGS     += -DCONFIG_MMU
+endif
+
 LDFLAGS     = 
-LIBS        = -lelf
+LIBS        = -lelf -lbfd
 
 # Source Files
-SRC     = $(wildcard *.cpp)
-SRC_LIB = $(filter-out main.cpp, $(wildcard *.cpp))
-LIB_OBJ = $(patsubst %.cpp,%.o,$(SRC_LIB))
-OBJ     = $(patsubst %.cpp,%.o,$(SRC))
+SRC_DIR    = .
+
+###############################################################################
+# Variables
+###############################################################################
+OBJ_DIR      ?= obj/$(TARGET)/
+
+###############################################################################
+# Variables: Lists of objects, source and deps
+###############################################################################
+# SRC / Object list
+src2obj       = $(OBJ_DIR)$(patsubst %$(suffix $(1)),%.o,$(notdir $(1)))
+
+SRC          ?= $(foreach src,$(SRC_DIR),$(wildcard $(src)/*.cpp))
+OBJ          ?= $(foreach src,$(SRC),$(call src2obj,$(src)))
+LIB_OBJ      ?= $(foreach src,$(filter-out main.cpp,$(SRC)),$(call src2obj,$(src)))
+
+###############################################################################
+# Rules: Compilation macro
+###############################################################################
+define template_cpp
+$(call src2obj,$(1)): $(1) | $(OBJ_DIR)
+	@echo "# Compiling $(notdir $(1))"
+	@g++ $(CFLAGS) -c $$< -o $$@
+endef
 
 ###############################################################################
 # Rules
 ###############################################################################
-all: $(TARGET)
+all: $(TARGET) lib
 	
-clean:
-	-rm *.o $(TARGET) libisa_sim.a
+$(OBJ_DIR):
+	@mkdir -p $@
 
-%.o : %.cpp
-	g++ -c $(CFLAGS) $< -o $@
+$(foreach src,$(SRC),$(eval $(call template_cpp,$(src))))	
 
 $(TARGET): $(OBJ) makefile
 	g++ $(LDFLAGS) $(OBJ) $(LIBS) -o $@
 
 lib: $(LIB_OBJ)
-	g++ -shared -o libisa_sim.a $(LIB_OBJ)
+	g++ -shared -o $(TARGET_LIB) $(LIB_OBJ)
+
+clean:
+	-rm -rf $(OBJ_DIR) $(TARGET) $(TARGET_LIB)
+
+test: $(TARGET)
+	./$(TARGET) -f test_image.bin
 
 run: $(TARGET)
-	./$(TARGET) -f firmware.elf
+	./$(TARGET) -f ./firmware.elf

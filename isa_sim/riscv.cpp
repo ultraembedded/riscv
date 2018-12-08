@@ -41,34 +41,33 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <assert.h>
 #include "riscv.h"
 
 //-----------------------------------------------------------------
 // Defines:
 //-----------------------------------------------------------------
-#define DPRINTF(l,a)        do { if (Trace & l) printf a; } while (0)
-#define TRACE_ENABLED(l)    (Trace & l)
+#define DPRINTF(l,a)        do { if (m_trace & l) printf a; } while (0)
+#define TRACE_ENABLED(l)    (m_trace & l)
+#define INST_STAT(l)
+
+#define RISCV_PRIV_REGNUM   4161
 
 //-----------------------------------------------------------------
 // Constructor
 //-----------------------------------------------------------------
-Riscv::Riscv()
+Riscv::Riscv(uint32_t baseAddr /*= 0*/, uint32_t len /*= 0*/)
 {
-    MemRegions = 0;
-    StatsInstStatsEnable = false;
-    StatsIf = NULL;
-}
-//-----------------------------------------------------------------
-// Constructor
-//-----------------------------------------------------------------
-Riscv::Riscv(uint32_t baseAddr, uint32_t len)
-{
-    MemRegions = 0;
-    StatsInstStatsEnable = false;
-    StatsIf = NULL;
+    m_mem_regions        = 0;
+    m_stats_if           = NULL;
+    m_console            = NULL;
+    m_has_breakpoints    = false;
 
-    create_memory(baseAddr, len);
+    // Some memory defined
+    if (len != 0)
+        create_memory(baseAddr, len);
+
     reset(baseAddr);
 }
 //-----------------------------------------------------------------
@@ -78,40 +77,129 @@ Riscv::~Riscv()
 {
     int m;
 
-    for (m=0;m<MemRegions;m++)
+    for (m=0;m<m_mem_regions;m++)
     {
-        if (Mem[m])
-            delete Mem[m];
-        Mem[m] = NULL;
+        if (m_mem[m])
+            delete m_mem[m];
+        m_mem[m] = NULL;
     }
 }
 //-----------------------------------------------------------------
-// create_memory:
+// error: Handle an error
+//-----------------------------------------------------------------
+bool Riscv::error(bool terminal, const char *fmt, ...)
+{
+    va_list args;
+
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+
+    exit(-1);
+
+    return true;
+}
+//-----------------------------------------------------------------
+// create_memory: Create a memory region
 //-----------------------------------------------------------------
 bool Riscv::create_memory(uint32_t baseAddr, uint32_t len, uint8_t *buf /*=NULL*/)
 {
     if (buf)
-        return AttachMemory(new SimpleMemory(buf, len), baseAddr, len);
+        return attach_memory(new SimpleMemory(buf, len), baseAddr, len);
     else
-        return AttachMemory(new SimpleMemory(len), baseAddr, len);
+        return attach_memory(new SimpleMemory(len), baseAddr, len);
 }
 //-----------------------------------------------------------------
-// AttachMemory:
+// attach_memory: Attach a memory device to a particular region
 //-----------------------------------------------------------------
-bool Riscv::AttachMemory(Memory *memory, uint32_t baseAddr, uint32_t len)
+bool Riscv::attach_memory(Memory *memory, uint32_t baseAddr, uint32_t len)
 {
-    if (MemRegions < MAX_MEM_REGIONS)
+    if (m_mem_regions < MAX_MEM_REGIONS)
     {
-        MemBase[MemRegions] = baseAddr;
-        MemSize[MemRegions] = len;
+        m_mem_base[m_mem_regions] = baseAddr;
+        m_mem_size[m_mem_regions] = len;
 
-        Mem[MemRegions] = memory;
-        Mem[MemRegions]->Reset();
+        m_mem[m_mem_regions] = memory;
+        m_mem[m_mem_regions]->reset();
 
-        MemRegions++;
+        m_mem_regions++;
 
         return true;
     }
+
+    return false;
+}
+//-----------------------------------------------------------------
+// set_pc: Set PC
+//-----------------------------------------------------------------
+void Riscv::set_pc(uint32_t pc)
+{
+    m_pc        = pc;
+    m_pc_x      = pc;
+}
+//-----------------------------------------------------------------
+// set_register: Set register value
+//-----------------------------------------------------------------
+void Riscv::set_register(int r, uint32_t val)
+{
+    if (r < REGISTERS)
+        m_gpr[r] = val;
+    else if (r == RISCV_PRIV_REGNUM)
+        m_csr_mpriv = val;
+}
+//-----------------------------------------------------------------
+// get_register: Get register value
+//-----------------------------------------------------------------
+uint32_t Riscv::get_register(int r)
+{
+    if (r < REGISTERS)
+        return m_gpr[r];
+    else if (r == RISCV_PRIV_REGNUM)
+        return m_csr_mpriv;
+
+    return 0;
+}
+//-----------------------------------------------------------------
+// get_break: Get breakpoint status (and clear)
+//-----------------------------------------------------------------
+bool Riscv::get_break(void)
+{
+    bool brk = m_break;
+    m_break = false;
+    return brk;
+}
+//-----------------------------------------------------------------
+// set_breakpoint: Set breakpoint on a given PC
+//-----------------------------------------------------------------
+bool Riscv::set_breakpoint(uint32_t pc)
+{
+    m_breakpoints.push_back(pc);
+    m_has_breakpoints = true;
+    return true;
+}
+//-----------------------------------------------------------------
+// set_breakpoint: Clear breakpoint on a given PC
+//-----------------------------------------------------------------
+bool Riscv::clr_breakpoint(uint32_t pc)
+{
+    for (std::vector<uint32_t>::iterator it = m_breakpoints.begin() ; it != m_breakpoints.end(); ++it)
+        if ((*it) == pc)
+        {
+            m_breakpoints.erase(it);
+            m_has_breakpoints = !m_breakpoints.empty();
+            return true;
+        }
+
+    return false;
+}
+//-----------------------------------------------------------------
+// check_breakpoint: Check if breakpoint has been hit
+//-----------------------------------------------------------------
+bool Riscv::check_breakpoint(uint32_t pc)
+{
+    for (std::vector<uint32_t>::iterator it = m_breakpoints.begin() ; it != m_breakpoints.end(); ++it)
+        if ((*it) == pc)
+            return true;
 
     return false;
 }
@@ -120,104 +208,97 @@ bool Riscv::AttachMemory(Memory *memory, uint32_t baseAddr, uint32_t len)
 //-----------------------------------------------------------------
 void Riscv::reset(uint32_t start_addr)
 {
-    int i;
+    m_pc        = start_addr;
+    m_pc_x      = start_addr;
 
-    r_pc        = start_addr;
-    r_pc_x      = start_addr;
+    for (int i=0;i<REGISTERS;i++)
+        m_gpr[i] = 0;
 
-    for (i=0;i<REGISTERS;i++)
-        r_gpr[i] = 0;
+    m_csr_mpriv    = PRIV_MACHINE;
+    m_csr_msr      = 0;
+    m_csr_mideleg  = 0;
+    m_csr_medeleg  = 0;
 
-    csr_epc     = 0;
-    csr_sr      = 0;
-    csr_ie      = 0;
-    csr_ip      = 0;
-    csr_cause   = 0;
-    csr_evec    = 0;
-    csr_time    = 0;
-    csr_timecmp = 0;
+    m_csr_mepc     = 0;
+    m_csr_mie      = 0;
+    m_csr_mip      = 0;
+    m_csr_mcause   = 0;
+    m_csr_mevec    = 0;
+    m_csr_mtime    = 0;
+    m_csr_mtimecmp = 0;
+    m_csr_mscratch = 0;
 
-    Fault       = false;
-    Break       = false;
-    Trace       = 0;
+    m_csr_sepc     = 0;
+    m_csr_sevec    = 0;
+    m_csr_scause   = 0;
+    m_csr_stval    = 0;
+    m_csr_satp     = 0;
+    m_csr_sscratch = 0;
 
-    ResetStats();
+    m_fault       = false;
+    m_break       = false;
+    m_trace       = 0;
+
+    stats_reset();
 }
 //-----------------------------------------------------------------
-// ResetStats: Reset runtime stats
-//-----------------------------------------------------------------
-void Riscv::ResetStats(void)
-{
-    int i;
-
-    // Clear stats
-    for (i=STATS_MIN;i<STATS_MAX;i++)
-        Stats[i] = 0;
-
-    for (i=0;i<ENUM_INST_MAX;i++)
-        StatsInst[i] = 0;
-}
-//-----------------------------------------------------------------
-// LoadMem: Load program code into startAddr offset
-//-----------------------------------------------------------------
-bool Riscv::LoadMem(uint32_t startAddr, uint8_t *data, int len)
-{
-    int i;
-    int j;
-    bool res = false;
-
-    for (i=0; i<len; i+=4)
-    {
-        for (j=0;j<MemRegions;j++)
-        {
-            if (((startAddr+i) >= MemBase[j]) && ((startAddr+i) + len) <= (MemBase[j] + MemSize[j]))
-            {
-                uint32_t data_word;
-                data_word = ((unsigned)*data++) << 0;
-                data_word|= ((unsigned)*data++) << 8;
-                data_word|= ((unsigned)*data++) << 16;
-                data_word|= ((unsigned)*data++) << 24;
-
-                Mem[j]->Store(startAddr - MemBase[j] + i, data_word, 4);
-                res = true;
-            }
-        }
-    }
-
-    return res;
-}
-//-----------------------------------------------------------------
-// write: 
-//-----------------------------------------------------------------
-void Riscv::write(uint32_t address, uint8_t data)
-{
-    for (int j=0;j<MemRegions;j++)
-        if (address >= MemBase[j] && address < (MemBase[j] + MemSize[j]))
-        {
-            Mem[j]->Store(address - MemBase[j], data, 1);
-            return ;
-        }
-    assert(!"Memory write issues...");
-}
-//-----------------------------------------------------------------
-// valid_addr: 
+// valid_addr: Check if the physical memory address is valid
 //-----------------------------------------------------------------
 bool Riscv::valid_addr(uint32_t address)
 {
-    for (int j=0;j<MemRegions;j++)
-        if (address >= MemBase[j] && address < (MemBase[j] + MemSize[j]))
+    for (int j=0;j<m_mem_regions;j++)
+        if (address >= m_mem_base[j] && address < (m_mem_base[j] + m_mem_size[j]))
             return true;
 
     return false;
 }
 //-----------------------------------------------------------------
-// read: 
+// write: Write a byte to memory (physical address)
+//-----------------------------------------------------------------
+void Riscv::write(uint32_t address, uint8_t data)
+{
+    for (int j=0;j<m_mem_regions;j++)
+        if (address >= m_mem_base[j] && address < (m_mem_base[j] + m_mem_size[j]))
+        {
+            m_mem[j]->store(address - m_mem_base[j], data, 1);
+            return ;
+        }
+
+    error(false, "Failed store @ 0x%08x\n", address);
+}
+//-----------------------------------------------------------------
+// write32: Write a word to memory (physical address)
+//-----------------------------------------------------------------
+void Riscv::write32(uint32_t address, uint32_t data)
+{
+    for (int j=0;j<m_mem_regions;j++)
+        if (address >= m_mem_base[j] && address < (m_mem_base[j] + m_mem_size[j]))
+        {
+            m_mem[j]->store(address - m_mem_base[j], data, 4);
+            return ;
+        }
+
+    error(false, "Failed store @ 0x%08x\n", address);
+}
+//-----------------------------------------------------------------
+// read: Read a byte from memory (physical address)
 //-----------------------------------------------------------------
 uint8_t Riscv::read(uint32_t address)
 {
-    for (int j=0;j<MemRegions;j++)
-        if (address >= MemBase[j] && address < (MemBase[j] + MemSize[j]))
-            return Mem[j]->Load(address - MemBase[j], 1, false);
+    for (int j=0;j<m_mem_regions;j++)
+        if (address >= m_mem_base[j] && address < (m_mem_base[j] + m_mem_size[j]))
+            return m_mem[j]->load(address - m_mem_base[j], 1, false);
+
+    return 0;
+}
+//-----------------------------------------------------------------
+// read32: Read a word from memory (physical address)
+//-----------------------------------------------------------------
+uint32_t Riscv::read32(uint32_t address)
+{
+    for (int j=0;j<m_mem_regions;j++)
+        if (address >= m_mem_base[j] && address < (m_mem_base[j] + m_mem_size[j]))
+            return m_mem[j]->load(address - m_mem_base[j], 4, false);
 
     return 0;
 }
@@ -226,158 +307,391 @@ uint8_t Riscv::read(uint32_t address)
 //-----------------------------------------------------------------
 uint32_t Riscv::get_opcode(uint32_t address)
 {
-    int m;
-
-    for (m=0;m<MemRegions;m++)
-        if (address >= MemBase[m] && address < (MemBase[m] + MemSize[m]))
-            return Mem[m]->Load(address - MemBase[m], 4, false);
-
-    return 0;
+    return read32(address);
 }
+#ifdef CONFIG_MMU
 //-----------------------------------------------------------------
-// Load:
+// mmu_read_word: Read a word from memory
 //-----------------------------------------------------------------
-uint32_t Riscv::Load(uint32_t pc, uint32_t address, int width, bool signedLoad)
-{    
-    int j;
+int Riscv::mmu_read_word(uint32_t address, uint32_t *val)
+{
+    int m;
+    *val = 0;
 
-    DPRINTF(LOG_MEM, ("        LOAD(%x, %d)\n", address, width));
-
-    event_push(COSIM_EVENT_LOAD, address & ~3, 0);
-
-    Stats[STATS_LOADS]++;
-
-    for (j=0;j<MemRegions;j++)
-        if (address >= MemBase[j] && address < (MemBase[j] + MemSize[j]))
+    for (m=0;m<m_mem_regions;m++)
+        if (address >= m_mem_base[m] && address < (m_mem_base[m] + m_mem_size[m]))
         {
-            uint32_t result = Mem[j]->Load(address - MemBase[j], width, signedLoad); 
-            event_push(COSIM_EVENT_LOAD_RESULT, result, 0);
-            return result;
+            *val = m_mem[m]->load(address - m_mem_base[m], 4, false);
+            return 1;
         }
 
-    fprintf(stderr, "%08x: Bad memory access 0x%x\n", pc, address);
     return 0;
 }
 //-----------------------------------------------------------------
-// Store:
+// mmu_walk: Page table walker
 //-----------------------------------------------------------------
-void Riscv::Store(uint32_t pc, uint32_t address, uint32_t data, int width)
+uint32_t Riscv::mmu_walk(uint32_t addr)
 {
-    int j;
+    int shift = 32 - MMU_VA_BITS;
+    uint32_t pte = 0;
 
-    DPRINTF(LOG_MEM,( "        STORE(%x, %x, %d)\n", address, data, width));
-    Stats[STATS_STORES]++;
+    DPRINTF(LOG_MMU, ("MMU: Walk %x\n", addr));
+
+    // the address must be a canonical sign-extended VA_BITS-bit number    
+    if (((int32_t)addr << shift >> shift) != (int32_t)addr)
+    {
+        pte = 0; // Bad alignment....
+
+        error(false, "%08x: PTE Walk - Bad alignment %x\n", m_pc, addr);
+    }
+    else if ((m_csr_satp & SATP_MODE) == 0) // Bare mode
+    {
+        pte = PAGE_PRESENT | PAGE_READ | PAGE_WRITE | PAGE_EXEC | ((addr >> MMU_PGSHIFT) << MMU_PGSHIFT);
+        DPRINTF(LOG_MMU, ("MMU: MMU not enabled\n"));
+    }
+    else
+    {
+        uint32_t base = ((m_csr_satp >> SATP_PPN_SHIFT) & SATP_PPN_MASK) * PAGE_SIZE;
+        uint32_t asid = ((m_csr_satp >> SATP_ASID_SHIFT) & SATP_ASID_MASK);
+
+        DPRINTF(LOG_MMU, ("MMU: MMU enabled - base 0x%08x\n", base));
+
+        uint32_t i;
+        for (i=MMU_LEVELS-1; i >= 0; i--)
+        {
+            int      ptshift  = i * MMU_PTIDXBITS;
+            uint32_t idx      = (addr >> (MMU_PGSHIFT+ptshift)) & ((1<<MMU_PTIDXBITS)-1);
+            uint32_t pte_addr = base + (idx * MMU_PTESIZE);
+
+            // Read PTE
+            if (!mmu_read_word(pte_addr, &pte))
+            {
+                DPRINTF(LOG_MMU, ("MMU: Cannot read PTE entry %x\n", pte_addr));
+                pte = 0;
+                break;
+            }
+
+            DPRINTF(LOG_MMU, ("MMU: PTE value = 0x%08x @ 0x%08x\n", pte, pte_addr));
+
+            uint32_t ppn = pte >> PAGE_PFN_SHIFT;
+
+            // Invalid mapping
+            if (!(pte & PAGE_PRESENT))
+            {
+                DPRINTF(LOG_MMU, ("MMU: Invalid mapping %x\n", pte_addr));
+                pte = 0;
+                break;
+            }
+            // Next level of page table
+            else if (!(pte & (PAGE_READ | PAGE_WRITE | PAGE_EXEC)))
+            {
+                base = ppn << MMU_PGSHIFT;
+                DPRINTF(LOG_MMU, ("MMU: Next level of page table %x\n", base));
+            }
+            // The actual PTE
+            else
+            {
+                // Keep permission bits
+                pte &= PAGE_FLAGS;
+
+                // if this PTE is from a larger PT, fake a leaf
+                // PTE so the TLB will work right
+                uint64_t vpn   = addr >> MMU_PGSHIFT;
+                uint64_t value = (ppn | (vpn & ((((uint64_t)1) << ptshift) - 1))) << MMU_PGSHIFT;
+
+                // Add back in permission bits
+                value |= pte;
+
+                assert((value >> 32) == 0);
+                pte   = value;
+
+                uint32_t ptd_addr = ((pte >> MMU_PGSHIFT) << MMU_PGSHIFT);
+
+                DPRINTF(LOG_MMU, ("MMU: PTE addr %x (%x)\n", ptd_addr, pte));
+
+                // fault if physical addr is out of range
+                if (mmu_read_word(ptd_addr, &ptd_addr))
+                {
+                    DPRINTF(LOG_MMU, ("MMU: PTE entry found %x\n", pte));
+                }
+                else
+                {
+                    DPRINTF(LOG_MMU, ("MMU: PTE access out of range %x\n", ((pte >> MMU_PGSHIFT) << MMU_PGSHIFT)));
+                    pte = 0;
+                    error(false, "%08x: PTE access out of range %x\n", m_pc, addr);
+                }
+
+                break;
+            }
+        }
+    }
+
+    return pte;
+}
+//-----------------------------------------------------------------
+// mmu_i_translate: Translate instruction fetch
+//-----------------------------------------------------------------
+int Riscv::mmu_i_translate(uint32_t addr, uint32_t *physical)
+{
+    bool page_fault = false;
+
+    // Machine - no MMU
+    if (m_csr_mpriv > PRIV_SUPER)
+    {
+        *physical = addr;
+        return 1; 
+    }
+    
+    uint32_t pte = mmu_walk(addr);
+
+    // Reserved configurations
+    if (((pte & (PAGE_EXEC | PAGE_READ | PAGE_WRITE)) == PAGE_WRITE) ||
+        ((pte & (PAGE_EXEC | PAGE_READ | PAGE_WRITE)) == (PAGE_EXEC | PAGE_WRITE)))
+    {
+        page_fault = true;
+    }
+    // Supervisor mode
+    else if (m_csr_mpriv == PRIV_SUPER)
+    {
+        // Supervisor attempts to execute user mode page
+        if (pte & PAGE_USER)
+        {
+            error(false, "IMMU: Attempt to execute user page 0x%08x\n", addr);
+            page_fault = true;
+        }
+        // Page not executable
+        else if ((pte & (PAGE_EXEC)) != (PAGE_EXEC))
+        {
+            page_fault = true;
+        }
+    }
+    // User mode
+    else
+    {
+        // User mode page not executable
+        if ((pte & (PAGE_EXEC | PAGE_USER)) != (PAGE_EXEC | PAGE_USER))
+        {
+            page_fault = true;
+        }
+    }
+
+    if (page_fault)
+    {
+        *physical      = 0xFFFFFFFF;
+        exception(MCAUSE_PAGE_FAULT_INST, addr, addr);
+        return 0;
+    }
+
+    uint32_t pgoff  = addr & (MMU_PGSIZE-1);
+    uint32_t pgbase = pte >> MMU_PGSHIFT << MMU_PGSHIFT;
+    uint32_t paddr  = pgbase + pgoff;
+
+    DPRINTF(LOG_MMU, ("IMMU: Lookup VA %x -> PA %x\n", addr, paddr));
+
+    *physical = paddr;
+    return 1; 
+}
+//-----------------------------------------------------------------
+// mmu_d_translate: Translate load store
+//-----------------------------------------------------------------
+int Riscv::mmu_d_translate(uint32_t pc, uint32_t addr, uint32_t *physical, int writeNotRead)
+{
+    bool page_fault = false;
+
+    // Machine - no MMU
+    if (m_csr_mpriv > PRIV_SUPER)
+    {
+        *physical = addr;
+        return 1; 
+    }
+
+    uint32_t pte = mmu_walk(addr);
+
+    // Reserved configurations
+    if (((pte & (PAGE_EXEC | PAGE_READ | PAGE_WRITE)) == PAGE_WRITE) ||
+        ((pte & (PAGE_EXEC | PAGE_READ | PAGE_WRITE)) == (PAGE_EXEC | PAGE_WRITE)))
+    {
+        page_fault = true;
+    }
+    // Supervisor mode
+    else if (m_csr_mpriv == PRIV_SUPER)
+    {
+        // User page access - super mode access not enabled
+        if ((pte & PAGE_USER) && !(m_csr_msr & SR_SUM))
+        {
+            error(false, "MMU_D: PC=%08x Access %08x - User page access by super\n", pc, addr);
+        }
+        else if ((writeNotRead  && ((pte & (PAGE_WRITE)) != (PAGE_WRITE))) || 
+                 (!writeNotRead && ((pte & (PAGE_READ))  != (PAGE_READ))))
+        {
+            page_fault = true;
+        }
+    }
+    // User mode
+    else
+    {
+        if ((writeNotRead  && ((pte & (PAGE_WRITE | PAGE_USER)) != (PAGE_WRITE | PAGE_USER))) || 
+            (!writeNotRead && ((pte & (PAGE_READ | PAGE_USER))  != (PAGE_READ | PAGE_USER))))
+        {
+            page_fault = true;
+        }
+    }
+
+    if (page_fault)
+    {
+        *physical      = 0xFFFFFFFF;
+        exception(writeNotRead ? MCAUSE_PAGE_FAULT_STORE : MCAUSE_PAGE_FAULT_LOAD, pc, addr);
+        return 0;
+    }
+
+    uint32_t pgoff  = addr & (MMU_PGSIZE-1);
+    uint32_t pgbase = pte >> MMU_PGSHIFT << MMU_PGSHIFT;
+    uint32_t paddr  = pgbase + pgoff;
+
+    DPRINTF(LOG_MMU, ("DMMU: Lookup VA %x -> PA %x\n", addr, paddr));
+
+    *physical = paddr;
+    return 1; 
+}
+#endif
+//-----------------------------------------------------------------
+// load: Perform a load operation (with optional MMU lookup)
+//-----------------------------------------------------------------
+int Riscv::load(uint32_t pc, uint32_t address, uint32_t *result, int width, bool signedLoad)
+{
+    uint32_t physical = address;
+
+#ifdef CONFIG_MMU
+    // Translate addresses if required
+    if (!mmu_d_translate(pc, address, &physical, 0))
+        return 0;
+#endif
+
+    DPRINTF(LOG_MEM, ("LOAD: VA 0x%08x PA 0x%08x Width %d\n", address, physical, width));
+
+    event_push(COSIM_EVENT_LOAD, physical & ~3, 0);
+
+    m_stats[STATS_LOADS]++;
+
+    for (int j=0;j<m_mem_regions;j++)
+        if (physical >= m_mem_base[j] && physical < (m_mem_base[j] + m_mem_size[j]))
+        {
+            *result = m_mem[j]->load(physical - m_mem_base[j], width, signedLoad);
+
+            DPRINTF(LOG_MEM, ("LOAD_RESULT: 0x%08x\n",*result));
+            event_push(COSIM_EVENT_LOAD_RESULT, *result, 0);
+            return 1;
+        }
+
+    error(false, "%08x: Bad memory access 0x%x\n", pc, address);
+    return 0;
+}
+//-----------------------------------------------------------------
+// store: Perform a store operation (with optional MMU lookup)
+//-----------------------------------------------------------------
+int Riscv::store(uint32_t pc, uint32_t address, uint32_t data, int width)
+{
+    uint32_t physical = address;
+
+#ifdef CONFIG_MMU
+    // Translate addresses if required
+    if (!mmu_d_translate(pc, address, &physical, 1))
+        return 0;
+#endif
+
+    DPRINTF(LOG_MEM, ("STORE: VA 0x%08x PA 0x%08x Value 0x%08x Width %d\n", address, physical, data, width));
+
+    m_stats[STATS_STORES]++;
 
     if (width == 1)
-        event_push(COSIM_EVENT_STORE, address & ~3, data & 0xFF);
+        event_push(COSIM_EVENT_STORE, physical & ~3, data & 0xFF);
     else if (width == 2)
-        event_push(COSIM_EVENT_STORE, address & ~3, data & 0xFFFF);
+        event_push(COSIM_EVENT_STORE, physical & ~3, data & 0xFFFF);
     else
-        event_push(COSIM_EVENT_STORE, address, data);
+        event_push(COSIM_EVENT_STORE, physical, data);
 
-    for (j=0;j<MemRegions;j++)
-        if (address >= MemBase[j] && address < (MemBase[j] + MemSize[j]))
+    for (int j=0;j<m_mem_regions;j++)
+        if (physical >= m_mem_base[j] && physical < (m_mem_base[j] + m_mem_size[j]))
         {
-            Mem[j]->Store(address - MemBase[j], data, width);
-            return ;
+            m_mem[j]->store(physical - m_mem_base[j], data, width);
+            return 1;
         }
 
-    fprintf(stderr, "%08x: Bad memory access 0x%x\n", pc, address);
+    error(false, "%08x: Bad memory access 0x%x\n", pc, address);
+    return 0;
 }
 //-----------------------------------------------------------------
-// AccessCsr:
+// access_csr: Perform CSR access
 //-----------------------------------------------------------------
-uint32_t Riscv::AccessCsr(uint32_t address, uint32_t data, bool set, bool clr)
+uint32_t Riscv::access_csr(uint32_t address, uint32_t data, bool set, bool clr)
 {
     uint32_t result = 0;
+
+#define CSR_STD(name, var_name) \
+    case CSR_ ##name: \
+    { \
+        data       &= CSR_ ##name## _MASK; \
+        result      = var_name & CSR_ ##name## _MASK; \
+        if (set && clr) \
+            var_name  = data; \
+        else if (set) \
+            var_name |= data; \
+        else if (clr) \
+            var_name &= ~data; \
+    } \
+    break;
+
+#define CSR_CONST(name, value) \
+    case CSR_ ##name: \
+    { \
+        result      = value; \
+    } \
+    break;
+
+
     switch (address & 0xFFF)
     {
         //--------------------------------------------------------
-        // Standard
-        //--------------------------------------------------------
-        case CSR_MEPC:
-            data       &= CSR_MEPC_MASK;
-            result      = csr_epc;
-            if (set && clr)
-                csr_epc  = data;
-            else if (set)
-                csr_epc |= data;
-            else if (clr)
-                csr_epc &= ~data;
-            break;
-        case CSR_MTVEC:
-            data       &= CSR_MTVEC_MASK;
-            result      = csr_evec;
-            if (set && clr)
-                csr_evec  = data;
-            else if (set)
-                csr_evec |= data;
-            else if (clr)
-                csr_evec &= ~data;
-            break;
-        case CSR_MCAUSE:
-            data       &= CSR_MCAUSE_MASK;
-            result      = csr_cause;
-            if (set && clr)
-                csr_cause  = data;
-            else if (set)
-                csr_cause |= data;
-            else if (clr)
-                csr_cause &= ~data;
-            break;
-        case CSR_MSTATUS:
-            data       &= CSR_MSTATUS_MASK;
-            result      = csr_sr;
-            if (set && clr)
-                csr_sr  = data;
-            else if (set)
-                csr_sr |= data;
-            else if (clr)
-                csr_sr &= ~data;
-            break;
-        case CSR_MIP:
-            data       &= CSR_MIP_MASK;
-            result      = csr_ip;
-            if (set && clr)
-                csr_ip = data;
-            else if (set)
-                csr_ip |= data;
-            else if (clr)
-                csr_ip &= ~data;
-            break;
-        case CSR_MIE:
-            data       &= CSR_MIE_MASK;
-            result      = csr_ie;
-            if (set && clr)
-                csr_ie  = data;
-            else if (set)
-                csr_ie |= data;
-            else if (clr)
-                csr_ie &= ~data;
-            break;
-        //--------------------------------------------------------
-        // Extensions
+        // Simulation control
         //--------------------------------------------------------
         case CSR_DSCRATCH:
             switch (data & 0xFF000000)
             {
                 case CSR_SIM_CTRL_EXIT:
+                    stats_dump();
                     exit(data & 0xFF);
                     break;
                 case CSR_SIM_CTRL_PUTC:
-                    fprintf(stderr, "%c", (data & 0xFF));
+                    if (m_console)
+                        m_console->putchar(data & 0xFF);
+                    else
+                        fprintf(stderr, "%c", (data & 0xFF));
+                    break;
+                case CSR_SIM_CTRL_GETC:
+                    if (m_console)
+                        result = m_console->getchar();
+                    else
+                        result = 0;
                     break;
                 case CSR_SIM_CTRL_TRACE:
                     enable_trace(data & 0xFF);
                     break;
                 case CSR_SIM_PRINTF:
                 {
-                    uint32_t fmt_addr = r_gpr[10];
-                    uint32_t arg1     = r_gpr[11];
-                    uint32_t arg2     = r_gpr[12];
-                    uint32_t arg3     = r_gpr[13];
-                    uint32_t arg4     = r_gpr[14];
+                    uint32_t fmt_addr = m_gpr[10];
+                    uint32_t arg1     = m_gpr[11];
+                    uint32_t arg2     = m_gpr[12];
+                    uint32_t arg3     = m_gpr[13];
+                    uint32_t arg4     = m_gpr[14];
 
+#ifdef CONFIG_MMU
+                    {
+                        uint32_t pte = mmu_walk(fmt_addr);
+                        uint32_t pgoff = fmt_addr & (MMU_PGSIZE-1);
+                        uint32_t pgbase = pte >> MMU_PGSHIFT << MMU_PGSHIFT;
+                        if (pte != 0) fmt_addr = pgbase + pgoff;
+                    }
+#endif
                     char fmt_str[1024];
                     int idx = 0;
                     while (idx < (sizeof(fmt_str)-1))
@@ -394,45 +708,150 @@ uint32_t Riscv::AccessCsr(uint32_t address, uint32_t data, bool set, bool clr)
                 }
                 break;
             }
-        break;
+         break;
+        //--------------------------------------------------------
+        // Standard - Machine
+        //--------------------------------------------------------
+        CSR_STD(MEPC,    m_csr_mepc)
+        CSR_STD(MTVEC,   m_csr_mevec)
+        CSR_STD(MCAUSE,  m_csr_mcause)
+        CSR_STD(MSTATUS, m_csr_msr)
+        CSR_STD(MIP,     m_csr_mip)
+        CSR_STD(MIE,     m_csr_mie)
+        CSR_CONST(MISA,  MISA_VALUE)
+        CSR_STD(MIDELEG, m_csr_mideleg)
+        CSR_STD(MEDELEG, m_csr_medeleg)
+        CSR_STD(MSCRATCH,m_csr_mscratch)
+        CSR_CONST(MHARTID,  MHARTID_VALUE)
+        //--------------------------------------------------------
+        // Standard - Supervisor
+        //--------------------------------------------------------
+        CSR_STD(SEPC,    m_csr_sepc)
+        CSR_STD(STVEC,   m_csr_sevec)
+        CSR_STD(SCAUSE,  m_csr_scause)
+        CSR_STD(SIP,     m_csr_mip)
+        CSR_STD(SIE,     m_csr_mie)
+        CSR_STD(SATP,    m_csr_satp)
+        CSR_STD(STVAL,   m_csr_stval)
+        CSR_STD(SSCRATCH,m_csr_sscratch)
+        CSR_STD(SSTATUS, m_csr_msr)
+        //--------------------------------------------------------
+        // Extensions
+        //-------------------------------------------------------- 
+        CSR_CONST(PMPCFG0, 0)
+        CSR_CONST(PMPCFG1, 0)
+        CSR_CONST(PMPCFG2, 0)
+        CSR_CONST(PMPADDR0, 0)
         case CSR_MTIME:
             data       &= CSR_MTIME_MASK;
-            result      = csr_time;
+            result      = m_csr_mtime;
 
-            // Non-std behaviour - write to CSR_TIME gives next interrupt threshold
-            if (set)
+            // Non-std behaviour - write to CSR_TIME gives next interrupt threshold            
+            if (set && data != 0)
             {
-                csr_timecmp = data;
+                m_csr_mtimecmp = data;
 
                 // Clear interrupt pending
-                csr_ip &= ~SR_IP_MTIP;
+                m_csr_mip &= ~((m_csr_mideleg & SR_IP_STIP) ? SR_IP_STIP : SR_IP_MTIP);
             }
+            break;
+    
+        case CSR_MTIMEH:
+            result      = m_csr_mtime >> 32;
+            break;
+        default:
+            error(false, "*** CSR address not supported %08x [PC=%08x]\n", address, m_pc);
             break;
     }
     return result;
 }
 //-----------------------------------------------------------------
-// Exception:
+// exception: Handle an exception or interrupt
 //-----------------------------------------------------------------
-void Riscv::Exception(uint32_t cause, uint32_t pc)
+void Riscv::exception(uint32_t cause, uint32_t pc, uint32_t badaddr /*= 0*/)
 {
-    // Interrupt save and disable
-    csr_sr &= ~SR_MPIE;
-    csr_sr |= (csr_sr & SR_MIE) ? SR_MPIE : 0;
-    csr_sr &= ~SR_MIE;
+    uint32_t deleg;
+    uint32_t bit;
 
-    csr_epc = pc;
+    // Interrupt
+    if (cause >= MCAUSE_INTERRUPT)
+    {
+        deleg = m_csr_mideleg;
+        bit   = 1 << (cause - MCAUSE_INTERRUPT);
+    }
+    // Exception
+    else
+    {
+        deleg = m_csr_medeleg;
+        bit   = 1 << cause;
+    }
 
-    csr_cause = cause;
+    // Exception delegated to supervisor mode
+    if (m_csr_mpriv <= PRIV_SUPER && (deleg & bit))
+    {
+        uint32_t s = m_csr_msr;
+
+        // Interrupt save and disable
+        s &= ~SR_SPIE;
+        s |= (s & SR_SIE) ? SR_SPIE : 0;
+        s &= ~SR_SIE;
+
+        // Record previous priviledge level
+        s &= ~SR_SPP;
+        s |= (m_csr_mpriv == PRIV_SUPER) ? SR_SPP : 0;
+
+        // Raise priviledge to supervisor level
+        m_csr_mpriv  = PRIV_SUPER;
+
+        m_csr_msr    = s;
+        m_csr_sepc   = pc;
+        m_csr_scause = cause;
+        m_csr_stval  = badaddr;
+
+        // Set new PC
+        m_pc         = m_csr_sevec;
+    }
+    // Machine mode
+    else
+    {
+        uint32_t s = m_csr_msr;
+
+        // Interrupt save and disable
+        s &= ~SR_MPIE;
+        s |= (s & SR_MIE) ? SR_MPIE : 0;
+        s &= ~SR_MIE;
+
+        // Record previous priviledge level
+        s &= ~SR_MPP;
+        s |= (m_csr_mpriv << SR_MPP_SHIFT);
+
+        // Raise priviledge to machine level
+        m_csr_mpriv  = PRIV_MACHINE;
+
+        m_csr_msr    = s;
+        m_csr_mepc   = pc;
+        m_csr_mcause = cause;
+
+        // Set new PC
+        m_pc         = m_csr_mevec; // TODO: This should be a product of the except num
+    }
 }
 //-----------------------------------------------------------------
-// Execute: Instruction execution stage
+// execute: Instruction execution stage
 //-----------------------------------------------------------------
-void Riscv::Execute(void)
+void Riscv::execute(void)
 {
+    uint32_t phy_pc = m_pc;
+
+#ifdef CONFIG_MMU
+    // Translate PC to physical address
+    if (!mmu_i_translate(m_pc, &phy_pc))
+        return ;
+#endif
+
     // Get opcode at current PC
-    uint32_t opcode = get_opcode(r_pc);
-    r_pc_x = r_pc;
+    uint32_t opcode = get_opcode(phy_pc);
+    m_pc_x = m_pc;
 
     // Extract registers
     int rd          = (opcode & OPCODE_RD_MASK)  >> OPCODE_RD_SHIFT;
@@ -451,35 +870,29 @@ void Riscv::Execute(void)
 
     // Retrieve registers
     uint32_t reg_rd  = 0;
-    uint32_t reg_rs1 = r_gpr[rs1];
-    uint32_t reg_rs2 = r_gpr[rs2];
-    uint32_t pc      = r_pc;
+    uint32_t reg_rs1 = m_gpr[rs1];
+    uint32_t reg_rs2 = m_gpr[rs2];
+    uint32_t pc      = m_pc;
 
-    bool exception = false;
-
-    //char sym_name[1024];
-    //sym_name[0] = '\0';
-    //symbol_get_name(pc, sym_name, sizeof(sym_name)-1);
+    bool take_exception = false;
 
     DPRINTF(LOG_OPCODES,( "%08x: %08x\n", pc, opcode));
-    DPRINTF(LOG_OPCODES,( "        rd(%d) r%d = %d, r%d = %d\n", rd, rs1, reg_rs1, rs2, reg_rs2));    
-
-    //printf("%s\n", sym_name);
+    DPRINTF(LOG_OPCODES,( "        rd(%d) r%d = %d, r%d = %d\n", rd, rs1, reg_rs1, rs2, reg_rs2));
 
     // As RVC is not supported, fault on opcode which is all zeros
     if (opcode == 0)
     {
-        fprintf(stderr, "Bad instruction @ %x\n", pc);
+        error(false, "Bad instruction @ %x\n", pc);
 
-        Exception(MCAUSE_ILLEGAL_INSTRUCTION, pc);
-        Fault = true;
-        exception = true;        
+        exception(MCAUSE_ILLEGAL_INSTRUCTION, pc);
+        m_fault = true;
+        take_exception = true;        
     }
     else if ((opcode & INST_ANDI_MASK) == INST_ANDI)
     {
         // ['rd', 'rs1', 'imm12']
         DPRINTF(LOG_INST,("%08x: andi r%d, r%d, %d\n", pc, rd, rs1, imm12));
-        StatsInst[ENUM_INST_ANDI]++;
+        INST_STAT(ENUM_INST_ANDI);
         reg_rd = reg_rs1 & imm12;
         pc += 4;        
     }
@@ -487,7 +900,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'imm12']
         DPRINTF(LOG_INST,("%08x: ori r%d, r%d, %d\n", pc, rd, rs1, imm12));
-        StatsInst[ENUM_INST_ORI]++;
+        INST_STAT(ENUM_INST_ORI);
         reg_rd = reg_rs1 | imm12;
         pc += 4;        
     }
@@ -495,7 +908,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'imm12']
         DPRINTF(LOG_INST,("%08x: xori r%d, r%d, %d\n", pc, rd, rs1, imm12));
-        StatsInst[ENUM_INST_XORI]++;
+        INST_STAT(ENUM_INST_XORI);
         reg_rd = reg_rs1 ^ imm12;
         pc += 4;        
     }
@@ -503,7 +916,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'imm12']
         DPRINTF(LOG_INST,("%08x: addi r%d, r%d, %d\n", pc, rd, rs1, imm12));
-        StatsInst[ENUM_INST_ADDI]++;
+        INST_STAT(ENUM_INST_ADDI);
         reg_rd = reg_rs1 + imm12;
         pc += 4;
     }
@@ -511,7 +924,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'imm12']
         DPRINTF(LOG_INST,("%08x: slti r%d, r%d, %d\n", pc, rd, rs1, imm12));
-        StatsInst[ENUM_INST_SLTI]++;
+        INST_STAT(ENUM_INST_SLTI);
         reg_rd = (signed)reg_rs1 < (signed)imm12;
         pc += 4;        
     }
@@ -519,7 +932,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'imm12']
         DPRINTF(LOG_INST,("%08x: sltiu r%d, r%d, %d\n", pc, rd, rs1, (unsigned)imm12));
-        StatsInst[ENUM_INST_SLTIU]++;
+        INST_STAT(ENUM_INST_SLTIU);
         reg_rd = (unsigned)reg_rs1 < (unsigned)imm12;
         pc += 4;        
     }
@@ -527,7 +940,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1']
         DPRINTF(LOG_INST,("%08x: slli r%d, r%d, %d\n", pc, rd, rs1, shamt));
-        StatsInst[ENUM_INST_SLLI]++;
+        INST_STAT(ENUM_INST_SLLI);
         reg_rd = reg_rs1 << shamt;
         pc += 4;        
     }
@@ -535,7 +948,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'shamt']
         DPRINTF(LOG_INST,("%08x: srli r%d, r%d, %d\n", pc, rd, rs1, shamt));
-        StatsInst[ENUM_INST_SRLI]++;
+        INST_STAT(ENUM_INST_SRLI);
         reg_rd = (unsigned)reg_rs1 >> shamt;
         pc += 4;        
     }
@@ -543,7 +956,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'shamt']
         DPRINTF(LOG_INST,("%08x: srai r%d, r%d, %d\n", pc, rd, rs1, shamt));
-        StatsInst[ENUM_INST_SRAI]++;
+        INST_STAT(ENUM_INST_SRAI);
         reg_rd = (signed)reg_rs1 >> shamt;
         pc += 4;        
     }
@@ -551,7 +964,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'imm20']
         DPRINTF(LOG_INST,("%08x: lui r%d, 0x%x\n", pc, rd, imm20));
-        StatsInst[ENUM_INST_LUI]++;
+        INST_STAT(ENUM_INST_LUI);
         reg_rd = imm20;
         pc += 4;        
     }
@@ -559,7 +972,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'imm20']
         DPRINTF(LOG_INST,("%08x: auipc r%d, 0x%x\n", pc, rd, imm20));
-        StatsInst[ENUM_INST_AUIPC]++;
+        INST_STAT(ENUM_INST_AUIPC);
         reg_rd = imm20 + pc;
         pc += 4;        
     }
@@ -567,7 +980,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: add r%d, r%d, r%d\n", pc, rd, rs1, rs2));
-        StatsInst[ENUM_INST_ADD]++;
+        INST_STAT(ENUM_INST_ADD);
         reg_rd = reg_rs1 + reg_rs2;
         pc += 4;        
     }
@@ -575,7 +988,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: sub r%d, r%d, r%d\n", pc, rd, rs1, rs2));
-        StatsInst[ENUM_INST_SUB]++;
+        INST_STAT(ENUM_INST_SUB);
         reg_rd = reg_rs1 - reg_rs2;
         pc += 4;        
     }
@@ -583,7 +996,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: slt r%d, r%d, r%d\n", pc, rd, rs1, rs2));
-        StatsInst[ENUM_INST_SLT]++;
+        INST_STAT(ENUM_INST_SLT);
         reg_rd = (signed)reg_rs1 < (signed)reg_rs2;
         pc += 4;        
     }
@@ -591,7 +1004,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: sltu r%d, r%d, r%d\n", pc, rd, rs1, rs2));
-        StatsInst[ENUM_INST_SLTU]++;
+        INST_STAT(ENUM_INST_SLTU);
         reg_rd = (unsigned)reg_rs1 < (unsigned)reg_rs2;
         pc += 4;        
     }
@@ -599,7 +1012,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: xor r%d, r%d, r%d\n", pc, rd, rs1, rs2));
-        StatsInst[ENUM_INST_XOR]++;
+        INST_STAT(ENUM_INST_XOR);
         reg_rd = reg_rs1 ^ reg_rs2;
         pc += 4;        
     }
@@ -607,7 +1020,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: or r%d, r%d, r%d\n", pc, rd, rs1, rs2));
-        StatsInst[ENUM_INST_OR]++;
+        INST_STAT(ENUM_INST_OR);
         reg_rd = reg_rs1 | reg_rs2;
         pc += 4;        
     }
@@ -615,7 +1028,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: and r%d, r%d, r%d\n", pc, rd, rs1, rs2));
-        StatsInst[ENUM_INST_AND]++;
+        INST_STAT(ENUM_INST_AND);
         reg_rd = reg_rs1 & reg_rs2;
         pc += 4;        
     }
@@ -623,7 +1036,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: sll r%d, r%d, r%d\n", pc, rd, rs1, rs2));
-        StatsInst[ENUM_INST_SLL]++;
+        INST_STAT(ENUM_INST_SLL);
         reg_rd = reg_rs1 << reg_rs2;
         pc += 4;        
     }
@@ -631,7 +1044,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: srl r%d, r%d, r%d\n", pc, rd, rs1, rs2));
-        StatsInst[ENUM_INST_SRL]++;
+        INST_STAT(ENUM_INST_SRL);
         reg_rd = (unsigned)reg_rs1 >> reg_rs2;
         pc += 4;        
     }
@@ -639,7 +1052,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: sra r%d, r%d, r%d\n", pc, rd, rs1, rs2));
-        StatsInst[ENUM_INST_SRA]++;
+        INST_STAT(ENUM_INST_SRA);
         reg_rd = (signed)reg_rs1 >> reg_rs2;
         pc += 4;        
     }
@@ -647,27 +1060,27 @@ void Riscv::Execute(void)
     {
         // ['rd', 'jimm20']
         DPRINTF(LOG_INST,("%08x: jal r%d, %d\n", pc, rd, jimm20));
-        StatsInst[ENUM_INST_JAL]++;
+        INST_STAT(ENUM_INST_JAL);
         reg_rd = pc + 4;
         pc+= jimm20;
 
-        Stats[STATS_BRANCHES]++;        
+        m_stats[STATS_BRANCHES]++;        
     }
     else if ((opcode & INST_JALR_MASK) == INST_JALR)
     {
         // ['rd', 'rs1', 'imm12']
         DPRINTF(LOG_INST,("%08x: jalr r%d, r%d\n", pc, rs1, imm12));
-        StatsInst[ENUM_INST_JALR]++;
+        INST_STAT(ENUM_INST_JALR);
         reg_rd = pc + 4;
         pc = (reg_rs1 + imm12) & ~1;
 
-        Stats[STATS_BRANCHES]++;        
+        m_stats[STATS_BRANCHES]++;        
     }
     else if ((opcode & INST_BEQ_MASK) == INST_BEQ)
     {
         // ['bimm12hi', 'rs1', 'rs2', 'bimm12lo']
         DPRINTF(LOG_INST,("%08x: beq r%d, r%d, %d\n", pc, rs1, rs2, bimm));
-        StatsInst[ENUM_INST_BEQ]++;
+        INST_STAT(ENUM_INST_BEQ);
         if (reg_rs1 == reg_rs2)
             pc += bimm;
         else
@@ -676,13 +1089,13 @@ void Riscv::Execute(void)
         // No writeback
         rd = 0;
 
-        Stats[STATS_BRANCHES]++;        
+        m_stats[STATS_BRANCHES]++;        
     }
     else if ((opcode & INST_BNE_MASK) == INST_BNE)
     {
         // ['bimm12hi', 'rs1', 'rs2', 'bimm12lo']
         DPRINTF(LOG_INST,("%08x: bne r%d, r%d, %d\n", pc, rs1, rs2, bimm));
-        StatsInst[ENUM_INST_BNE]++;
+        INST_STAT(ENUM_INST_BNE);
         if (reg_rs1 != reg_rs2)
             pc += bimm;
         else
@@ -691,13 +1104,13 @@ void Riscv::Execute(void)
         // No writeback
         rd = 0;
 
-        Stats[STATS_BRANCHES]++;        
+        m_stats[STATS_BRANCHES]++;        
     }
     else if ((opcode & INST_BLT_MASK) == INST_BLT)
     {
         // ['bimm12hi', 'rs1', 'rs2', 'bimm12lo']
         DPRINTF(LOG_INST,("%08x: blt r%d, r%d, %d\n", pc, rs1, rs2, bimm));
-        StatsInst[ENUM_INST_BLT]++;
+        INST_STAT(ENUM_INST_BLT);
         if ((signed)reg_rs1 < (signed)reg_rs2)
             pc += bimm;
         else
@@ -706,13 +1119,13 @@ void Riscv::Execute(void)
         // No writeback
         rd = 0;
 
-        Stats[STATS_BRANCHES]++;        
+        m_stats[STATS_BRANCHES]++;        
     }
     else if ((opcode & INST_BGE_MASK) == INST_BGE)
     {
         // ['bimm12hi', 'rs1', 'rs2', 'bimm12lo']
         DPRINTF(LOG_INST,("%08x: bge r%d, r%d, %d\n", pc, rs1, rs2, bimm));
-        StatsInst[ENUM_INST_BGE]++;
+        INST_STAT(ENUM_INST_BGE);
         if ((signed)reg_rs1 >= (signed)reg_rs2)
             pc += bimm;
         else
@@ -721,13 +1134,13 @@ void Riscv::Execute(void)
         // No writeback
         rd = 0;
 
-        Stats[STATS_BRANCHES]++;        
+        m_stats[STATS_BRANCHES]++;        
     }
     else if ((opcode & INST_BLTU_MASK) == INST_BLTU)
     {
         // ['bimm12hi', 'rs1', 'rs2', 'bimm12lo']
         DPRINTF(LOG_INST,("%08x: bltu r%d, r%d, %d\n", pc, rs1, rs2, bimm));
-        StatsInst[ENUM_INST_BLTU]++;
+        INST_STAT(ENUM_INST_BLTU);
         if ((unsigned)reg_rs1 < (unsigned)reg_rs2)
             pc += bimm;
         else
@@ -736,13 +1149,13 @@ void Riscv::Execute(void)
         // No writeback
         rd = 0;
 
-        Stats[STATS_BRANCHES]++;        
+        m_stats[STATS_BRANCHES]++;        
     }
     else if ((opcode & INST_BGEU_MASK) == INST_BGEU)
     {
         // ['bimm12hi', 'rs1', 'rs2', 'bimm12lo']
         DPRINTF(LOG_INST,("%08x: bgeu r%d, r%d, %d\n", pc, rs1, rs2, bimm));
-        StatsInst[ENUM_INST_BGEU]++;
+        INST_STAT(ENUM_INST_BGEU);
         if ((unsigned)reg_rs1 >= (unsigned)reg_rs2)
             pc += bimm;
         else
@@ -751,63 +1164,77 @@ void Riscv::Execute(void)
         // No writeback
         rd = 0;
 
-        Stats[STATS_BRANCHES]++;        
+        m_stats[STATS_BRANCHES]++;        
     }
     else if ((opcode & INST_LB_MASK) == INST_LB)
     {
         // ['rd', 'rs1', 'imm12']
         DPRINTF(LOG_INST,("%08x: lb r%d, %d(r%d)\n", pc, rd, imm12, rs1));
-        StatsInst[ENUM_INST_LB]++;
-        reg_rd = Load(pc, reg_rs1 + imm12, 1, true);
-        pc += 4;
+        INST_STAT(ENUM_INST_LB);
+        if (load(pc, reg_rs1 + imm12, &reg_rd, 1, true))
+            pc += 4;
+        else
+            return;
     }
     else if ((opcode & INST_LH_MASK) == INST_LH)
     {
         // ['rd', 'rs1', 'imm12']
         DPRINTF(LOG_INST,("%08x: lh r%d, %d(r%d)\n", pc, rd, imm12, rs1));
-        StatsInst[ENUM_INST_LH]++;
-        reg_rd = Load(pc, reg_rs1 + imm12, 2, true);
-        pc += 4;
+        INST_STAT(ENUM_INST_LH);
+        if (load(pc, reg_rs1 + imm12, &reg_rd, 2, true))
+            pc += 4;
+        else
+            return;
     }
     else if ((opcode & INST_LW_MASK) == INST_LW)
     {
         // ['rd', 'rs1', 'imm12']        
-        reg_rd = Load(pc, reg_rs1 + imm12, 4, true);
-        DPRINTF(LOG_INST,("%08x: lw r%d, %d(r%d) = 0x%x\n", pc, rd, imm12, rs1, reg_rd));
-        StatsInst[ENUM_INST_LW]++;
-        pc += 4;        
+        INST_STAT(ENUM_INST_LW);
+        DPRINTF(LOG_INST,("%08x: lw r%d, %d(r%d)\n", pc, rd, imm12, rs1));
+        if (load(pc, reg_rs1 + imm12, &reg_rd, 4, true))
+            pc += 4;
+        else
+            return;
     }
     else if ((opcode & INST_LBU_MASK) == INST_LBU)
     {
         // ['rd', 'rs1', 'imm12']
         DPRINTF(LOG_INST,("%08x: lbu r%d, %d(r%d)\n", pc, rd, imm12, rs1));
-        StatsInst[ENUM_INST_LBU]++;
-        reg_rd = Load(pc, reg_rs1 + imm12, 1, false);
-        pc += 4;
+        INST_STAT(ENUM_INST_LBU);
+        if (load(pc, reg_rs1 + imm12, &reg_rd, 1, false))
+            pc += 4;
+        else
+            return;
     }
     else if ((opcode & INST_LHU_MASK) == INST_LHU)
     {
         // ['rd', 'rs1', 'imm12']
         DPRINTF(LOG_INST,("%08x: lhu r%d, %d(r%d)\n", pc, rd, imm12, rs1));
-        StatsInst[ENUM_INST_LHU]++;
-        reg_rd = Load(pc, reg_rs1 + imm12, 2, false);
-        pc += 4;
+        INST_STAT(ENUM_INST_LHU);
+        if (load(pc, reg_rs1 + imm12, &reg_rd, 2, false))
+            pc += 4;
+        else
+            return;
     }
     else if ((opcode & INST_LWU_MASK) == INST_LWU)
     {
         // ['rd', 'rs1', 'imm12']
         DPRINTF(LOG_INST,("%08x: lwu r%d, %d(r%d)\n", pc, rd, imm12, rs1));
-        StatsInst[ENUM_INST_LWU]++;
-        reg_rd = Load(pc, reg_rs1 + imm12, 4, false);
-        pc += 4;
+        INST_STAT(ENUM_INST_LWU);
+        if (load(pc, reg_rs1 + imm12, &reg_rd, 4, false))
+            pc += 4;
+        else
+            return;
     }
     else if ((opcode & INST_SB_MASK) == INST_SB)
     {
         // ['imm12hi', 'rs1', 'rs2', 'imm12lo']
         DPRINTF(LOG_INST,("%08x: sb %d(r%d), r%d\n", pc, storeimm, rs1, rs2));
-        StatsInst[ENUM_INST_SB]++;
-        Store(pc, reg_rs1 + storeimm, reg_rs2, 1);
-        pc += 4;
+        INST_STAT(ENUM_INST_SB);
+        if (store(pc, reg_rs1 + storeimm, reg_rs2, 1))
+            pc += 4;
+        else
+            return ;
 
         // No writeback
         rd = 0;
@@ -816,9 +1243,11 @@ void Riscv::Execute(void)
     {
         // ['imm12hi', 'rs1', 'rs2', 'imm12lo']
         DPRINTF(LOG_INST,("%08x: sh %d(r%d), r%d\n", pc, storeimm, rs1, rs2));
-        StatsInst[ENUM_INST_SH]++;
-        Store(pc, reg_rs1 + storeimm, reg_rs2, 2);
-        pc += 4;
+        INST_STAT(ENUM_INST_SH);
+        if (store(pc, reg_rs1 + storeimm, reg_rs2, 2))
+            pc += 4;
+        else
+            return ;
 
         // No writeback
         rd = 0;
@@ -827,9 +1256,11 @@ void Riscv::Execute(void)
     {
         // ['imm12hi', 'rs1', 'rs2', 'imm12lo']
         DPRINTF(LOG_INST,("%08x: sw %d(r%d), r%d\n", pc, storeimm, rs1, rs2));
-        StatsInst[ENUM_INST_SW]++;
-        Store(pc, reg_rs1 + storeimm, reg_rs2, 4);
-        pc += 4;
+        INST_STAT(ENUM_INST_SW);
+        if (store(pc, reg_rs1 + storeimm, reg_rs2, 4))
+            pc += 4;
+        else
+            return ;
 
         // No writeback
         rd = 0;
@@ -838,7 +1269,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: mul r%d, r%d, r%d\n", pc, rd, rs1, rs2));
-        StatsInst[ENUM_INST_MUL]++;
+        INST_STAT(ENUM_INST_MUL);
         reg_rd = (signed)reg_rs1 * (signed)reg_rs2;
         pc += 4;        
     }
@@ -846,7 +1277,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         long long res = ((long long) (int)reg_rs1) * ((long long)(int)reg_rs2);
-        StatsInst[ENUM_INST_MULH]++;
+        INST_STAT(ENUM_INST_MULH);
         DPRINTF(LOG_INST,("%08x: mulh r%d, r%d, r%d\n", pc, rd, rs1, rs2));
         reg_rd = (int)(res >> 32);
         pc += 4;
@@ -855,7 +1286,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         long long res = ((long long) (int)reg_rs1) * ((unsigned long long)(unsigned)reg_rs2);
-        StatsInst[ENUM_INST_MULHSU]++;
+        INST_STAT(ENUM_INST_MULHSU);
         DPRINTF(LOG_INST,("%08x: mulhsu r%d, r%d, r%d\n", pc, rd, rs1, rs2));
         reg_rd = (int)(res >> 32);
         pc += 4;
@@ -864,7 +1295,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         unsigned long long res = ((unsigned long long) (unsigned)reg_rs1) * ((unsigned long long)(unsigned)reg_rs2);
-        StatsInst[ENUM_INST_MULHU]++;
+        INST_STAT(ENUM_INST_MULHU);
         DPRINTF(LOG_INST,("%08x: mulhu r%d, r%d, r%d\n", pc, rd, rs1, rs2));
         reg_rd = (int)(res >> 32);
         pc += 4;
@@ -873,7 +1304,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: div r%d, r%d, r%d\n", pc, rd, rs1, rs2));
-        StatsInst[ENUM_INST_DIV]++;
+        INST_STAT(ENUM_INST_DIV);
         if ((signed)reg_rs1 == INT32_MIN && (signed)reg_rs2 == -1)
             reg_rd = reg_rs1;
         else if (reg_rs2 != 0)
@@ -886,7 +1317,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: divu r%d, r%d, r%d\n", pc, rd, rs1, rs2));
-        StatsInst[ENUM_INST_DIVU]++;
+        INST_STAT(ENUM_INST_DIVU);
         if (reg_rs2 != 0)
             reg_rd = (unsigned)reg_rs1 / (unsigned)reg_rs2;
         else
@@ -897,7 +1328,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: rem r%d, r%d, r%d\n", pc, rd, rs1, rs2));
-        StatsInst[ENUM_INST_REM]++;
+        INST_STAT(ENUM_INST_REM);
 
         if((signed)reg_rs1 == INT32_MIN && (signed)reg_rs2 == -1)
             reg_rd = 0;
@@ -911,7 +1342,7 @@ void Riscv::Execute(void)
     {
         // ['rd', 'rs1', 'rs2']
         DPRINTF(LOG_INST,("%08x: remu r%d, r%d, r%d\n", pc, rd, rs1, rs2));
-        StatsInst[ENUM_INST_REMU]++;
+        INST_STAT(ENUM_INST_REMU);
         if (reg_rs2 != 0)
             reg_rd = (unsigned)reg_rs1 % (unsigned)reg_rs2;
         else
@@ -921,95 +1352,152 @@ void Riscv::Execute(void)
     else if ((opcode & INST_ECALL_MASK) == INST_ECALL)
     {
         DPRINTF(LOG_INST,("%08x: ecall\n", pc));
-        StatsInst[ENUM_INST_ECALL]++;
-        
-        Exception(MCAUSE_ECALL_U, pc);
+        INST_STAT(ENUM_INST_ECALL);
 
-        pc          = csr_evec;
-        exception   = true;
+        exception(MCAUSE_ECALL_U + m_csr_mpriv, pc);
+        take_exception   = true;
     }
     else if ((opcode & INST_EBREAK_MASK) == INST_EBREAK)
     {
         DPRINTF(LOG_INST,("%08x: ebreak\n", pc));
-        StatsInst[ENUM_INST_EBREAK]++;
+        INST_STAT(ENUM_INST_EBREAK);
 
-        Exception(MCAUSE_BREAKPOINT, pc);
-
-        pc          = csr_evec;
-        exception   = true;
-        Break       = true;
+        exception(MCAUSE_BREAKPOINT, pc);
+        take_exception   = true;
+        m_break          = true;
     }
     else if ((opcode & INST_MRET_MASK) == INST_MRET)
     {
         DPRINTF(LOG_INST,("%08x: mret\n", pc));
-        StatsInst[ENUM_INST_MRET]++;
+        INST_STAT(ENUM_INST_MRET);
+
+        assert(m_csr_mpriv == PRIV_MACHINE);
+
+        uint32_t s        = m_csr_msr;
+        uint32_t prev_prv = SR_GET_MPP(m_csr_msr);
 
         // Interrupt enable pop
-        csr_sr &= ~SR_MIE;
-        csr_sr |= (csr_sr & SR_MPIE) ? SR_MIE : 0;
-        csr_sr |= SR_MPIE;
+        s &= ~SR_MIE;
+        s |= (s & SR_MPIE) ? SR_MIE : 0;
+        s |= SR_MPIE;
+
+        // Set next MPP to user mode
+        s &= ~SR_MPP;
+        s |=  SR_MPP_U;
+
+        // Set privilege level to previous MPP
+        m_csr_mpriv   = prev_prv;
+        m_csr_msr     = s;
 
         // Return to EPC
-        pc          = csr_epc;        
+        pc          = m_csr_mepc;
+    }
+    else if ((opcode & INST_SRET_MASK) == INST_SRET)
+    {
+        DPRINTF(LOG_INST,("%08x: sret\n", pc));
+        INST_STAT(ENUM_INST_SRET);
+
+        assert(m_csr_mpriv == PRIV_SUPER);
+
+        uint32_t s        = m_csr_msr;
+        uint32_t prev_prv = (m_csr_msr & SR_SPP) ? PRIV_SUPER : PRIV_USER;
+
+        // Interrupt enable pop
+        s &= ~SR_SIE;
+        s |= (s & SR_SPIE) ? SR_SIE : 0;
+        s |= SR_SPIE;
+
+        // Set next SPP to user mode
+        s &= ~SR_SPP;
+
+        // Set privilege level to previous MPP
+        m_csr_mpriv   = prev_prv;
+        m_csr_msr     = s;
+
+        // Return to EPC
+        pc          = m_csr_sepc;
+    }
+    else if ( ((opcode & INST_SFENCE_MASK) == INST_SFENCE) ||
+              ((opcode & INST_FENCE_MASK) == INST_FENCE) ||
+              ((opcode & INST_IFENCE_MASK) == INST_IFENCE))
+    {
+        DPRINTF(LOG_INST,("%08x: fence\n", pc));
+        INST_STAT(ENUM_INST_FENCE);
+        pc += 4;
     }
     else if ((opcode & INST_CSRRW_MASK) == INST_CSRRW)
     {
         DPRINTF(LOG_INST,("%08x: csrw r%d, r%d, 0x%x\n", pc, rd, rs1, imm12));
-        StatsInst[ENUM_INST_CSRRW]++;
-        reg_rd = AccessCsr(imm12, reg_rs1, true, true);
+        INST_STAT(ENUM_INST_CSRRW);
+        reg_rd = access_csr(imm12, reg_rs1, true, true);
         pc += 4;
     }    
     else if ((opcode & INST_CSRRS_MASK) == INST_CSRRS)
     {
         DPRINTF(LOG_INST,("%08x: csrs r%d, r%d, 0x%x\n", pc, rd, rs1, imm12));
-        StatsInst[ENUM_INST_CSRRS]++;
-        reg_rd = AccessCsr(imm12, reg_rs1, true, false);
+        INST_STAT(ENUM_INST_CSRRS);
+        reg_rd = access_csr(imm12, reg_rs1, true, false);
         pc += 4;
     }
     else if ((opcode & INST_CSRRC_MASK) == INST_CSRRC)
     {
         DPRINTF(LOG_INST,("%08x: csrc r%d, r%d, 0x%x\n", pc, rd, rs1, imm12));
-        StatsInst[ENUM_INST_CSRRC]++;
-        reg_rd = AccessCsr(imm12, reg_rs1, false, true);
+        INST_STAT(ENUM_INST_CSRRC);
+        reg_rd = access_csr(imm12, reg_rs1, false, true);
         pc += 4;
     }
     else if ((opcode & INST_CSRRWI_MASK) == INST_CSRRWI)
     {
-        StatsInst[ENUM_INST_CSRRWI]++;
-        reg_rd = AccessCsr(imm12, rs1, true, true);
+        DPRINTF(LOG_INST,("%08x: csrwi r%d, %d, 0x%x\n", pc, rd, rs1, imm12));
+        INST_STAT(ENUM_INST_CSRRWI);
+        reg_rd = access_csr(imm12, rs1, true, true);
         pc += 4;
     }
     else if ((opcode & INST_CSRRSI_MASK) == INST_CSRRSI)
     {
-        StatsInst[ENUM_INST_CSRRSI]++;
-        reg_rd = AccessCsr(imm12, rs1, true, false);
+        DPRINTF(LOG_INST,("%08x: csrsi r%d, %d, 0x%x\n", pc, rd, rs1, imm12));
+        INST_STAT(ENUM_INST_CSRRSI);
+        reg_rd = access_csr(imm12, rs1, true, false);
         pc += 4;
     }
     else if ((opcode & INST_CSRRCI_MASK) == INST_CSRRCI)
     {
-        StatsInst[ENUM_INST_CSRRCI]++;
-        reg_rd = AccessCsr(imm12, rs1, false, true);
+        DPRINTF(LOG_INST,("%08x: csrci r%d, %d, 0x%x\n", pc, rd, rs1, imm12));
+        INST_STAT(ENUM_INST_CSRRCI);
+        reg_rd = access_csr(imm12, rs1, false, true);
         pc += 4;
-    }    
+    }
+    else if ((opcode & INST_WFI_MASK) == INST_WFI)
+    {
+        DPRINTF(LOG_INST,("%08x: wfi\n", pc));
+        INST_STAT(ENUM_INST_WFI);
+        pc += 4;
+    }
     else
     {
-        fprintf(stderr, "Bad instruction @ %x (opcode %x)\n", pc, opcode);
-        Exception(MCAUSE_ILLEGAL_INSTRUCTION, pc);
-        Fault = true;
-        exception = true;
+        error(false, "Bad instruction @ %x (opcode %x)\n", pc, opcode);
+        exception(MCAUSE_ILLEGAL_INSTRUCTION, pc);
+        m_fault        = true;
+        take_exception = true;
     }
 
     if (rd != 0)
-        r_gpr[rd] = reg_rd;
+        m_gpr[rd] = reg_rd;
 
-    // Interrupts enabled, check for pending interrupt
-    if ((csr_sr & SR_MIE) && !exception)
+    // Pending interrupt
+    if (!take_exception && (m_csr_mip & m_csr_mie))
     {
-        uint32_t interrupts =  csr_ip & csr_ie;
+        uint32_t pending_interrupts = (m_csr_mip & m_csr_mie);
+        uint32_t m_enabled          = m_csr_mpriv < PRIV_MACHINE || (m_csr_mpriv == PRIV_MACHINE && (m_csr_msr & SR_MIE));
+        uint32_t s_enabled          = m_csr_mpriv < PRIV_SUPER   || (m_csr_mpriv == PRIV_SUPER   && (m_csr_msr & SR_SIE));
+        uint32_t m_interrupts       = pending_interrupts & ~m_csr_mideleg & -m_enabled;
+        uint32_t s_interrupts       = pending_interrupts & m_csr_mideleg & -s_enabled;
+        uint32_t interrupts         = m_interrupts ? m_interrupts : s_interrupts;
 
         // Interrupt pending and mask enabled
         if (interrupts)
         {
+            //printf("Take Interrupt...: %08x\n", interrupts);
             int i;
 
             for (i=IRQ_MIN;i<IRQ_MAX;i++)
@@ -1018,9 +1506,8 @@ void Riscv::Execute(void)
                 {
                     // Only service one interrupt per cycle
                     DPRINTF(LOG_INST,( "Interrupt%d taken...\n", i));
-                    Exception(MCAUSE_INTERRUPT + i, pc);
-
-                    pc          = csr_evec;                    
+                    exception(MCAUSE_INTERRUPT + i, pc);
+                    take_exception = true;
                     break;
                 }
             }
@@ -1028,27 +1515,30 @@ void Riscv::Execute(void)
     }
 
     // Stats interface
-    if (StatsIf)
-        StatsIf->Execute(r_pc, opcode);
+    if (m_stats_if)
+        m_stats_if->execute(m_pc, opcode);
 
-    r_pc = pc;
+    if (!take_exception)
+        m_pc = pc;
 }
 //-----------------------------------------------------------------
 // step: Step through one instruction
 //-----------------------------------------------------------------
 void Riscv::step(void)
 {
-    Stats[STATS_INSTRUCTIONS]++;
+    m_stats[STATS_INSTRUCTIONS]++;
 
     // Execute instruction at current PC
-    Execute();
+    execute();
 
     // Increment timer counter
-    csr_time++;
+    m_csr_mtime++;
 
     // Timer should generate a interrupt?
-    if (csr_time == csr_timecmp)
-        csr_ip |= SR_IP_MTIP;
+    // Limited internal timer, truncate to 32-bits
+    m_csr_mtime &= 0xFFFFFFFF;
+    if (m_csr_mtime == m_csr_mtimecmp)
+        m_csr_mip |= (m_csr_mideleg & SR_IP_STIP) ? SR_IP_STIP : SR_IP_MTIP;
 
     // Dump state
     if (TRACE_ENABLED(LOG_REGISTERS))
@@ -1058,23 +1548,13 @@ void Riscv::step(void)
         for (i=0;i<REGISTERS;i+=4)
         {
             DPRINTF(LOG_REGISTERS,( " %d: ", i));
-            DPRINTF(LOG_REGISTERS,( " %08x %08x %08x %08x\n", r_gpr[i+0], r_gpr[i+1], r_gpr[i+2], r_gpr[i+3]));
+            DPRINTF(LOG_REGISTERS,( " %08x %08x %08x %08x\n", m_gpr[i+0], m_gpr[i+1], m_gpr[i+2], m_gpr[i+3]));
         }
     }
 
-    // Machine register trace
-    if (TRACE_ENABLED(LOG_MACH_TRACE))
-    {
-        int i;
-        DPRINTF(LOG_MACH_TRACE, ( "REG: "));
-        for (i=0;i<REGISTERS;i++)
-        {
-            if (i != 0)
-                DPRINTF(LOG_MACH_TRACE, ( ", "));
-            DPRINTF(LOG_MACH_TRACE, ( "%08x", r_gpr[i]));
-        }
-        DPRINTF(LOG_MACH_TRACE, ( "\n"));
-    }
+    // Breakpoint hit?
+    if (m_has_breakpoints && check_breakpoint(m_pc_x))
+        m_break = true;
 }
 //-----------------------------------------------------------------
 // set_interrupt: Register pending interrupt
@@ -1082,39 +1562,39 @@ void Riscv::step(void)
 void Riscv::set_interrupt(int irq)
 {
     assert(irq == 0);
-    csr_ip |= SR_IP_MEIP;
+    m_csr_mip |= SR_IP_MEIP;
 }
 //-----------------------------------------------------------------
-// DumpStats: Show execution stats
+// stats_reset: Reset runtime stats
 //-----------------------------------------------------------------
-void Riscv::DumpStats(void)
+void Riscv::stats_reset(void)
+{
+    // Clear stats
+    for (int i=STATS_MIN;i<STATS_MAX;i++)
+        m_stats[i] = 0;
+}
+//-----------------------------------------------------------------
+// stats_dump: Show execution stats
+//-----------------------------------------------------------------
+void Riscv::stats_dump(void)
 {  
     // Stats interface
-    if (StatsIf)
+    if (m_stats_if)
     {
-        StatsIf->Print();
-        StatsIf->Reset();
+        m_stats_if->print();
+        m_stats_if->reset();
     }
     else
     {
         printf( "Runtime Stats:\n");
-        printf( "- Total Instructions %d\n", Stats[STATS_INSTRUCTIONS]);
-        if (Stats[STATS_INSTRUCTIONS] > 0)
+        printf( "- Total Instructions %d\n", m_stats[STATS_INSTRUCTIONS]);
+        if (m_stats[STATS_INSTRUCTIONS] > 0)
         {
-            printf( "- Loads %d (%d%%)\n",  Stats[STATS_LOADS],  (Stats[STATS_LOADS] * 100)  / Stats[STATS_INSTRUCTIONS]);
-            printf( "- Stores %d (%d%%)\n", Stats[STATS_STORES], (Stats[STATS_STORES] * 100) / Stats[STATS_INSTRUCTIONS]);
-            printf( "- Branches Operations %d (%d%%)\n", Stats[STATS_BRANCHES], (Stats[STATS_BRANCHES] * 100)  / Stats[STATS_INSTRUCTIONS]);
+            printf( "- Loads %d (%d%%)\n",  m_stats[STATS_LOADS],  (m_stats[STATS_LOADS] * 100)  / m_stats[STATS_INSTRUCTIONS]);
+            printf( "- Stores %d (%d%%)\n", m_stats[STATS_STORES], (m_stats[STATS_STORES] * 100) / m_stats[STATS_INSTRUCTIONS]);
+            printf( "- Branches Operations %d (%d%%)\n", m_stats[STATS_BRANCHES], (m_stats[STATS_BRANCHES] * 100)  / m_stats[STATS_INSTRUCTIONS]);
         }
     }
 
-    if (StatsInstStatsEnable)
-    {
-        int i;
-
-        printf("\nInstructions:\n");
-        for (i=0;i<ENUM_INST_MAX;i++)
-            printf("- %s = %d\n", inst_names[i], StatsInst[i]);
-    }
-
-    ResetStats();
+    stats_reset();
 }

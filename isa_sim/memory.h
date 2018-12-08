@@ -49,9 +49,9 @@
 class Memory
 {
 public:  
-    virtual void        Reset(void) = 0;
-    virtual uint32_t    Load(uint32_t address, int width, bool signedLoad) = 0;
-    virtual void        Store(uint32_t address, uint32_t data, int width) = 0;
+    virtual void        reset(void) = 0;
+    virtual uint32_t    load(uint32_t address, int width, bool signedLoad) = 0;
+    virtual void        store(uint32_t address, uint32_t data, int width) = 0;
 };
 
 //-----------------------------------------------------------------
@@ -71,12 +71,12 @@ public:
         Size = size;
     }    
 
-    virtual void Reset(void)
+    virtual void reset(void)
     {
         memset(Mem, 0, Size);
     }
 
-    virtual uint32_t Load(uint32_t address, int width, bool signedLoad)
+    virtual uint32_t load(uint32_t address, int width, bool signedLoad)
     {
         uint32_t data = 0;
 
@@ -124,7 +124,7 @@ public:
         return data;
     }
 
-    virtual void Store(uint32_t address, uint32_t data, int width)
+    virtual void store(uint32_t address, uint32_t data, int width)
     {
         switch (width)
         {

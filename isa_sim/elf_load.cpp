@@ -93,7 +93,7 @@ int elf_load(const char *filename, cb_mem_create fn_create, cb_mem_load fn_load,
         shdr = elf32_getshdr(scn);
 
         // Section which need allocating
-        if (shdr->sh_flags & SHF_ALLOC)
+        if ((shdr->sh_flags & SHF_ALLOC) && (shdr->sh_size > 0))
         {
             data = elf_getdata(scn, NULL);
 
@@ -128,4 +128,44 @@ int elf_load(const char *filename, cb_mem_create fn_create, cb_mem_load fn_load,
     close ( fd );
     
     return 1;
+}
+//-----------------------------------------------------------------
+// elf_get_symbol
+//-----------------------------------------------------------------
+long elf_get_symbol(const char *filename, const char *symname)
+{
+    bfd *ibfd;
+    asymbol **symtab;
+    long nsize, nsyms, i;
+    symbol_info syminfo;
+    char **matching;
+
+    bfd_init();
+    ibfd = bfd_openr(filename, NULL);
+
+    if (ibfd == NULL) 
+    {
+        printf("bfd_openr error\n");
+        return -1;
+    }
+
+    if (!bfd_check_format_matches(ibfd, bfd_object, &matching)) 
+    {
+        printf("format_matches\n");
+        return -1;
+    }
+
+    nsize = bfd_get_symtab_upper_bound (ibfd);
+    symtab = (asymbol **)malloc(nsize);
+    nsyms = bfd_canonicalize_symtab(ibfd, symtab);
+
+    for (i = 0; i < nsyms; i++) {
+        if (strcmp(symtab[i]->name, symname) == 0) {
+            bfd_symbol_info(symtab[i], &syminfo);
+            return (long) syminfo.value;
+        }
+    }
+
+    bfd_close(ibfd);
+    return -1;
 }

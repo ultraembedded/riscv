@@ -35,11 +35,16 @@ public:
     virtual void      reset(uint32_t pc) = 0;
 
     // Status    
-    virtual bool      get_fault(void) = 0;
+    virtual bool      get_fault(void)   = 0;
     virtual bool      get_stopped(void) = 0;
+    virtual bool      get_break(void)  { return false; }
 
     // Execute one instruction
-    virtual void      step(void) = 0;   
+    virtual void      step(void) = 0;
+
+    // Breakpoints
+    virtual bool      set_breakpoint(uint32_t pc)   { return false; }
+    virtual bool      clr_breakpoint(uint32_t pc) { return false; }
 
     // State after execution
     virtual uint32_t  get_opcode(void) = 0;
@@ -49,6 +54,7 @@ public:
     virtual int       get_num_reg(void) = 0;
 
     virtual void      set_register(int r, uint32_t val) = 0;
+    virtual void      set_pc(uint32_t val) { }
 
     // Trigger interrupt
     virtual void      set_interrupt(int irq) = 0;
@@ -115,7 +121,7 @@ class cosim: public cosim_cpu_api, cosim_mem_api
 {
 private:
     static cosim * s_instance;
-    cosim() { }
+    cosim() { m_dump_file = NULL; }
 
 public:
     static cosim *instance(void)
@@ -160,9 +166,26 @@ public:
     void    write(uint32_t addr, uint8_t data);
     uint8_t read(uint32_t addr);
 
+    void     write_word(uint32_t addr, uint32_t data);
+    uint32_t read_word(uint32_t addr);
+
+    void    at_exit(uint32_t exitcode);
+
+    // Set memory dump on exit
+    void    dump_on_exit(const char *filename, uint32_t dump_start, uint32_t dump_end)
+    {
+        m_dump_file  = filename;
+        m_dump_start = dump_start;
+        m_dump_end   = dump_end;
+    }
+
 private:
     std::vector <cosim_cpu_item > m_cpu;
     std::vector <cosim_mem_item > m_mem;
+
+    const char * m_dump_file;
+    uint32_t     m_dump_start;
+    uint32_t     m_dump_end;
 };
 
 #endif

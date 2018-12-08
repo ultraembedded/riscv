@@ -4,10 +4,16 @@ A simple RISC-V instruction set simulator for RV32IM.
 
 ## Building
 
-Dependancies;
+Dependencies;
 * gcc
 * make
 * libelf
+* libbfd
+
+To install the dependencies on Linux Ubuntu/Mint;
+```
+sudo apt-get install libelf-dev binutils-dev
+```
 
 To build the executable, type:
 ```

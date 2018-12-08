@@ -305,7 +305,17 @@ bool riscv_inst_decode(char *str, uint32_t pc, uint32_t opcode)
     }
     else if ((opcode & INST_MRET_MASK) == INST_MRET)
     {
-        sprintf(str, "%08x: mret", pc);       
+        sprintf(str, "%08x: mret", pc);
+    }
+    else if ((opcode & INST_SRET_MASK) == INST_SRET)
+    {
+        sprintf(str, "%08x: sret", pc);
+    }
+    else if ( ((opcode & INST_SFENCE_MASK) == INST_SFENCE) ||
+              ((opcode & INST_FENCE_MASK) == INST_FENCE) ||
+              ((opcode & INST_IFENCE_MASK) == INST_IFENCE))
+    {
+        sprintf(str, "%08x: sfence", pc);
     }
     else if ((opcode & INST_CSRRW_MASK) == INST_CSRRW)
     {
@@ -330,7 +340,11 @@ bool riscv_inst_decode(char *str, uint32_t pc, uint32_t opcode)
     else if ((opcode & INST_CSRRCI_MASK) == INST_CSRRCI)
     {
         sprintf(str, "%08x: csrci r%d, %d, 0x%x", pc, rd, rs1, imm12);
-    }    
+    }
+    else if ((opcode & INST_WFI_MASK) == INST_WFI)
+    {
+        sprintf(str, "%08x: wfi", pc);
+    }
     else
     {
         sprintf(str, "%08x: invalid!", pc);
