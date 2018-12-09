@@ -4,7 +4,7 @@
 VERILATOR_SRC ?= /usr/share/verilator/include
 SYSTEMC_HOME  ?= /usr/local/systemc-2.3.1
 
-TEST_IMAGE ?= ../../isa_sim/firmware.elf
+TEST_IMAGE ?= ../../isa_sim/images/basic.elf
 
 CORE       ?= rv32im
 

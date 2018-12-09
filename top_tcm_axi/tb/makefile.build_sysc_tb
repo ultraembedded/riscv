@@ -23,7 +23,7 @@ INCLUDE_PATH += $(SYSTEMC_HOME)/include
 LIB_PATH     ?=
 LIB_PATH     += ./lib 
 LIB_PATH     += ../../isa_sim
-LIBS          = -lisa_sim -lsyscverilated -lelf
+LIBS          = -lisa_sim -lsyscverilated -lelf -lbfd
 
 # Flags
 CFLAGS       ?= -fpic -O2

@@ -6,6 +6,9 @@
 TARGET	   ?= riscv-sim
 TARGET_LIB ?= libisa_sim.a
 
+RUN_ELF    ?= images/linux.elf
+RUN_OPTS   ?= "-b 0x80000000 -s 33554432"
+
 # Options
 MMU        ?= yes
 
@@ -63,8 +66,5 @@ lib: $(LIB_OBJ)
 clean:
 	-rm -rf $(OBJ_DIR) $(TARGET) $(TARGET_LIB)
 
-test: $(TARGET)
-	./$(TARGET) -f test_image.bin
-
 run: $(TARGET)
-	./$(TARGET) -f ./firmware.elf
+	./$(TARGET) -f $(RUN_ELF) $(RUN_OPTS)

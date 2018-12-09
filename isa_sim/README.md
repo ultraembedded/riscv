@@ -24,10 +24,16 @@ make
 
 The simulator will load and run a compiled ELF (compiled with RV32I or RV32IM compiler options);
 ```
-./riscv-sim -f firmware.elf
+# Using a makerule
+make run
+
+# Or running directly
+./riscv-sim -f images/basic.elf
+./riscv-sim -f images/linux.elf -b 0x80000000 -s 33554432
 ```
 
-There is an example ELF provided.
+There are two example pre-compiled ELFs provided, one which is a basic machine mode only test program, and one
+which boots Linux (modified 4.19 compiled for RV32IM).
 
 ## Extensions
 
