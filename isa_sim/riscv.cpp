@@ -52,8 +52,6 @@
 #define TRACE_ENABLED(l)    (m_trace & l)
 #define INST_STAT(l)
 
-#define RISCV_PRIV_REGNUM   4161
-
 //-----------------------------------------------------------------
 // Constructor
 //-----------------------------------------------------------------
@@ -142,20 +140,53 @@ void Riscv::set_pc(uint32_t pc)
 //-----------------------------------------------------------------
 void Riscv::set_register(int r, uint32_t val)
 {
-    if (r < REGISTERS)
-        m_gpr[r] = val;
-    else if (r == RISCV_PRIV_REGNUM)
-        m_csr_mpriv = val;
+    if (r <= RISCV_REGNO_GPR31)   m_gpr[r] = val;
+    else if (r == RISCV_REGNO_PC) m_pc     = val;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_MEPC)) m_csr_mepc = val;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_MCAUSE)) m_csr_mcause = val;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_MSTATUS)) m_csr_msr = val;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_MTVEC)) m_csr_mevec = val;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_MIE)) m_csr_mie = val;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_MIP)) m_csr_mip = val;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_MTIME)) m_csr_mtime = val;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_MTIMEH)) m_csr_mtimecmp = val; // Non-std
+    else if (r == (RISCV_REGNO_CSR0 + CSR_MSCRATCH)) m_csr_mscratch = val;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_MIDELEG)) m_csr_mideleg = val;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_MEDELEG)) m_csr_medeleg = val;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_SEPC)) m_csr_sepc = val;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_STVEC)) m_csr_sevec = val;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_SCAUSE)) m_csr_scause = val;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_STVAL)) m_csr_stval = val;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_SATP)) m_csr_satp = val;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_SSCRATCH)) m_csr_sscratch = val;
+    else if (r == RISCV_REGNO_PRIV) m_csr_mpriv = val;
+    
 }
 //-----------------------------------------------------------------
 // get_register: Get register value
 //-----------------------------------------------------------------
 uint32_t Riscv::get_register(int r)
 {
-    if (r < REGISTERS)
-        return m_gpr[r];
-    else if (r == RISCV_PRIV_REGNUM)
-        return m_csr_mpriv;
+    if (r <= RISCV_REGNO_GPR31)   return m_gpr[r];
+    else if (r == RISCV_REGNO_PC) return m_pc;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_MEPC)) return m_csr_mepc;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_MCAUSE)) return m_csr_mcause;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_MSTATUS)) return m_csr_msr;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_MTVEC)) return m_csr_mevec;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_MIE)) return m_csr_mie;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_MIP)) return m_csr_mip;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_MTIME)) return m_csr_mtime;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_MTIMEH)) return m_csr_mtimecmp; // Non-std
+    else if (r == (RISCV_REGNO_CSR0 + CSR_MSCRATCH)) return m_csr_mscratch;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_MIDELEG)) return m_csr_mideleg;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_MEDELEG)) return m_csr_medeleg;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_SEPC)) return m_csr_sepc;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_STVEC)) return m_csr_sevec;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_SCAUSE)) return m_csr_scause;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_STVAL)) return m_csr_stval;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_SATP)) return m_csr_satp;
+    else if (r == (RISCV_REGNO_CSR0 + CSR_SSCRATCH)) return m_csr_sscratch;
+    else if (r == RISCV_REGNO_PRIV) return m_csr_mpriv;
 
     return 0;
 }

@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.8
+//                            V0.9
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2018
 //
@@ -111,7 +111,7 @@
 `define       ENUM_INST_DIVU    52
 `define        ENUM_INST_REM    53
 `define       ENUM_INST_REMU    54
-`define       ENUM_INST_SPARE   55
+`define       ENUM_INST_FAULT   55
 `define        ENUM_INST_MAX    56
 
 //--------------------------------------------------------------------
@@ -342,6 +342,10 @@
 `define INST_WFI 32'h10500073
 `define INST_WFI_MASK 32'hffff8fff
 
+// Fault opcode (re-purposed FADD)
+`define INST_FAULT       32'h53
+`define INST_FAULT_MASK  32'hfe00007f
+
 //--------------------------------------------------------------------
 // Privilege levels
 //--------------------------------------------------------------------
@@ -395,6 +399,10 @@
     `define MISA_RVC      32'h00000004
     `define MISA_RVS      32'h00040000
     `define MISA_RVU      32'h00100000
+`define CSR_MEDELEG       12'h302
+`define CSR_MEDELEG_MASK  32'hFFFFFFFF
+`define CSR_MIDELEG       12'h303
+`define CSR_MIDELEG_MASK  32'hFFFFFFFF
 `define CSR_MIE           12'h304
 `define CSR_MIE_MASK      `IRQ_MASK
 `define CSR_MTVEC         12'h305
@@ -409,6 +417,8 @@
 `define CSR_MIP_MASK      `IRQ_MASK
 `define CSR_MTIME         12'hc01
 `define CSR_MTIME_MASK    32'hFFFFFFFF
+`define CSR_MTIMEH        12'hc81
+`define CSR_MTIMEH_MASK   32'hFFFFFFFF
 `define CSR_MHARTID       12'hF14
 `define CSR_MHARTID_MASK  32'hFFFFFFFF
 
@@ -494,3 +504,14 @@
 `define MCAUSE_PAGE_FAULT_LOAD          ((0 << `MCAUSE_INT) | 13)
 `define MCAUSE_PAGE_FAULT_STORE         ((0 << `MCAUSE_INT) | 15)
 `define MCAUSE_INTERRUPT                (1 << `MCAUSE_INT)
+
+//--------------------------------------------------------------------
+// Debug
+//--------------------------------------------------------------------
+`define RISCV_REGNO_FIRST   13'd0
+`define RISCV_REGNO_GPR0    13'd0
+`define RISCV_REGNO_GPR31   13'd31
+`define RISCV_REGNO_PC      13'd32
+`define RISCV_REGNO_CSR0    13'd65
+`define RISCV_REGNO_CSR4095 (`RISCV_REGNO_CSR0 +  13'd4095)
+`define RISCV_REGNO_PRIV    13'd4161

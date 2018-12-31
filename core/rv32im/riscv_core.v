@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.8
+//                            V0.9
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2018
 //
@@ -81,7 +81,6 @@ wire  [ 31:0]  fetch_pc_w;
 wire           fault_load_w;
 wire           exec_stall_w;
 wire           muldiv_opcode_valid_w;
-wire           fetch_fault_w;
 wire  [  4:0]  writeback_muldiv_idx_w;
 wire           csr_opcode_valid_w;
 wire  [  4:0]  opcode_rb_idx_w;
@@ -104,7 +103,6 @@ wire           csr_stall_w;
 wire  [ 31:0]  opcode_opcode_w;
 wire           writeback_muldiv_squash_w;
 wire           fetch_branch_w;
-wire           fault_fetch_w;
 wire  [ 31:0]  writeback_muldiv_value_w;
 wire  [ 31:0]  writeback_exec_value_w;
 wire  [ 31:0]  branch_csr_pc_w;
@@ -200,7 +198,6 @@ riscv_csr u_csr
     ,.branch_exec_request_i(branch_request_w)
     ,.branch_exec_pc_i(branch_pc_w)
     ,.cpu_id_i(cpu_id_i)
-    ,.fault_fetch_i(fault_fetch_w)
     ,.fault_store_i(fault_store_w)
     ,.fault_load_i(fault_load_w)
     ,.fault_addr_i(fault_addr_w)
@@ -246,7 +243,6 @@ riscv_decode u_decode
     ,.fetch_valid_i(fetch_valid_w)
     ,.fetch_instr_i(fetch_instr_w)
     ,.fetch_pc_i(fetch_pc_w)
-    ,.fetch_fault_i(fetch_fault_w)
     ,.branch_request_i(branch_request_w)
     ,.branch_pc_i(branch_pc_w)
     ,.branch_csr_request_i(branch_csr_request_w)
@@ -284,7 +280,6 @@ riscv_decode u_decode
     ,.opcode_rb_idx_o(opcode_rb_idx_w)
     ,.opcode_ra_operand_o(opcode_ra_operand_w)
     ,.opcode_rb_operand_o(opcode_rb_operand_w)
-    ,.fault_fetch_o(fault_fetch_w)
 );
 
 
@@ -306,7 +301,6 @@ riscv_fetch u_fetch
     ,.fetch_valid_o(fetch_valid_w)
     ,.fetch_instr_o(fetch_instr_w)
     ,.fetch_pc_o(fetch_pc_w)
-    ,.fetch_fault_o(fetch_fault_w)
     ,.icache_rd_o(mem_i_rd_o)
     ,.icache_flush_o(mem_i_flush_o)
     ,.icache_invalidate_o(mem_i_invalidate_o)

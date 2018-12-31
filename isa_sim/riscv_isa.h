@@ -571,7 +571,7 @@ static const char * inst_names[ENUM_INST_MAX+1] =
 #define CSR_SSTATUS       0x100
 #define CSR_SSTATUS_MASK  SR_SMODE_MASK
 #define CSR_SIE           0x104
-#define CSR_SIE_MASK      0xFFFFFFFF  // TODO:
+#define CSR_SIE_MASK      ((1 << IRQ_S_EXT) | (1 << IRQ_S_TIMER) | (1 << IRQ_S_SOFT))
 #define CSR_STVEC         0x105
 #define CSR_STVEC_MASK    0xFFFFFFFF
 //#define CSR_SCOUNTEREN  0x106
@@ -580,11 +580,11 @@ static const char * inst_names[ENUM_INST_MAX+1] =
 #define CSR_SEPC          0x141
 #define CSR_SEPC_MASK     0xFFFFFFFF
 #define CSR_SCAUSE        0x142
-#define CSR_SCAUSE_MASK   0xFFFFFFFF
+#define CSR_SCAUSE_MASK   0x8000000F
 #define CSR_STVAL         0x143
 #define CSR_STVAL_MASK    0xFFFFFFFF
 #define CSR_SIP           0x144
-#define CSR_SIP_MASK      0xFFFFFFFF  // TODO:
+#define CSR_SIP_MASK      ((1 << IRQ_S_EXT) | (1 << IRQ_S_TIMER) | (1 << IRQ_S_SOFT))
 #define CSR_SPTBR         0x180
 #define CSR_SPTBR_MASK    0xFFFFFFFF
 #define CSR_SATP          0x180
@@ -608,6 +608,21 @@ static const char * inst_names[ENUM_INST_MAX+1] =
 #define MISA_RVU MISA_RV('U')
 
 #define MISA_VALUE (MISA_RV32 | MISA_RVI | MISA_RVM | MISA_RVS | MISA_RVU)
+
+//--------------------------------------------------------------------
+// Register Enumerations:
+//--------------------------------------------------------------------
+enum eRegisters
+{ 
+    RISCV_REGNO_FIRST   = 0,
+    RISCV_REGNO_GPR0    = RISCV_REGNO_FIRST,
+    RISCV_REGNO_GPR31   = 31,
+    RISCV_REGNO_PC      = 32,
+    RISCV_REGNO_CSR0    = 65,
+    RISCV_REGNO_CSR4095 = RISCV_REGNO_CSR0 + 4095,
+    RISCV_REGNO_PRIV    = 4161,
+    RISCV_REGNO_COUNT
+};
 
 //--------------------------------------------------------------------
 // Exception Causes

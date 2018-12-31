@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.8
+//                            V0.9
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2018
 //
@@ -46,7 +46,6 @@ module riscv_decode
     ,input           fetch_valid_i
     ,input  [ 31:0]  fetch_instr_i
     ,input  [ 31:0]  fetch_pc_i
-    ,input           fetch_fault_i
     ,input           branch_request_i
     ,input  [ 31:0]  branch_pc_i
     ,input           branch_csr_request_i
@@ -84,7 +83,6 @@ module riscv_decode
     ,output [  4:0]  opcode_rb_idx_o
     ,output [ 31:0]  opcode_ra_operand_o
     ,output [ 31:0]  opcode_rb_operand_o
-    ,output          fault_fetch_o
 );
 
 
@@ -118,6 +116,17 @@ wire [4:0] wb_mem_rd_w    = writeback_mem_idx_i    & {5{~writeback_mem_squash_i}
 wire [4:0] wb_csr_rd_w    = writeback_csr_idx_i    & {5{~writeback_csr_squash_i}};
 wire [4:0] wb_muldiv_rd_w = writeback_muldiv_idx_i & {5{~writeback_muldiv_squash_i}};
 
+
+reg [4:0]  wb_rd_r;
+reg [31:0] wb_res_r;
+
+always @ *
+begin
+    wb_rd_r  = wb_exec_rd_w;
+    wb_res_r = writeback_exec_value_i;
+
+end
+
 riscv_regfile
 u_regfile
 (
@@ -125,8 +134,8 @@ u_regfile
     .rst_i(rst_i),
 
     // Write ports
-    .rd0_i(wb_exec_rd_w),
-    .rd0_value_i(writeback_exec_value_i),
+    .rd0_i(wb_rd_r),
+    .rd0_value_i(wb_res_r),
     .rd1_i(wb_mem_rd_w),
     .rd1_value_i(writeback_mem_value_i),
     .rd2_i(wb_csr_rd_w),
@@ -150,7 +159,6 @@ begin
     valid_q       <= 1'b0;
     pc_q          <= 32'b0;
     inst_q        <= 32'b0;
-    fault_fetch_q <= 1'b0;
 end
 // Branch request
 else if (branch_request_i || branch_csr_request_i)
@@ -163,7 +171,6 @@ begin
         pc_q      <= branch_pc_i;
 
     inst_q        <= 32'b0;
-    fault_fetch_q <= 1'b0;
 end
 // Normal operation - decode not stalled
 else if (!stall_input_w)
@@ -177,7 +184,6 @@ begin
         pc_q      <= pc_q + 32'd4;
 
     inst_q        <= fetch_instr_i;
-    fault_fetch_q <= fetch_fault_i;
 end
 
 //-------------------------------------------------------------
@@ -205,6 +211,8 @@ wire sb_alloc_w = (opcode_instr_o[`ENUM_INST_LB]     ||
                    opcode_instr_o[`ENUM_INST_DIVU]   ||
                    opcode_instr_o[`ENUM_INST_REM]    ||
                    opcode_instr_o[`ENUM_INST_REMU] );
+
+
 always @ *
 begin
     scoreboard_r = scoreboard_q;
@@ -286,7 +294,7 @@ assign opcode_instr_o[`ENUM_INST_DIV]    = ((inst_q & `INST_DIV_MASK) == `INST_D
 assign opcode_instr_o[`ENUM_INST_DIVU]   = ((inst_q & `INST_DIVU_MASK) == `INST_DIVU);     // divu
 assign opcode_instr_o[`ENUM_INST_REM]    = ((inst_q & `INST_REM_MASK) == `INST_REM);       // rem
 assign opcode_instr_o[`ENUM_INST_REMU]   = ((inst_q & `INST_REMU_MASK) == `INST_REMU);     // remu
-assign opcode_instr_o[`ENUM_INST_SPARE]  = 1'b0;
+assign opcode_instr_o[`ENUM_INST_FAULT]  = ((inst_q & `INST_FAULT_MASK) == `INST_FAULT);   // invalid
 
 // Decode operands
 assign opcode_pc_o     = pc_q;
@@ -348,6 +356,7 @@ begin
         stall_scoreboard_r = 1'b1;
         opcode_valid_r     = 1'b0;
     end
+
 end
 
 // Opcode valid flags to the various execution units
@@ -366,10 +375,9 @@ assign fetch_accept_o    = branch_csr_request_i || (!exec_stall_i && !stall_scor
 //-------------------------------------------------------------
 // Faults
 //-------------------------------------------------------------
-assign fault_fetch_o     = fault_fetch_q;
-
 // Bad opcode detection...
-wire fault_invalid_inst_w = opcode_valid_r ? ~(|opcode_instr_o[`ENUM_INST_SPARE-1:0]) : 1'b0;
+wire fault_invalid_inst_w = opcode_valid_r ? ~(|opcode_instr_o[`ENUM_INST_FAULT-1:0]) : 1'b0;
+
 
 //-------------------------------------------------------------
 // get_reg_valid: Register contents valid
@@ -540,6 +548,7 @@ begin
             opcode_instr_o[`ENUM_INST_DIVU]   : dbg_inst_str = "divu";
             opcode_instr_o[`ENUM_INST_REM]    : dbg_inst_str = "rem";
             opcode_instr_o[`ENUM_INST_REMU]   : dbg_inst_str = "remu";
+            opcode_instr_o[`ENUM_INST_FAULT]  : dbg_inst_str = "FAULT";
         endcase
 
         case (1'b1)

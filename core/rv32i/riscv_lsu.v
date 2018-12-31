@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.8
+//                            V0.9
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2018
 //
@@ -305,6 +305,6 @@ end
 
 assign writeback_idx_o   = wb_idx_r;
 assign writeback_value_o = wb_result_r;
-
+assign writeback_squash_o= 1'b0;
 
 endmodule
