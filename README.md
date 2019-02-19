@@ -11,6 +11,7 @@ This core has been tested against a co-simulation model, and exercised on FPGA.
 | ------------------ | ------------------------------------------------ |
 | core/rv32i         | RISC-V pipelined RV32I CPU core (Verilog)        |
 | core/rv32im        | RISC-V pipelined RV32IM CPU core (Verilog)       |
+| core/rv32imsu      | RISC-V pipelined RV32IM with supervisor and MMU  |
 | isa_sim            | Instruction set simulator (C)                    |
 | top_tcm_axi/src_v  | Core instance with 64KB DP-RAM & AXI Interfaces  |
 | top_tcm_axi/tb     | System-C testbench for the core                  |
