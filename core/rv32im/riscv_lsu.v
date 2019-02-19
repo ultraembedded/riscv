@@ -1,15 +1,15 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.9
+//                            V0.9.5
 //                     Ultra-Embedded.com
-//                     Copyright 2014-2018
+//                     Copyright 2014-2019
 //
 //                   admin@ultra-embedded.com
 //
 //                       License: BSD
 //-----------------------------------------------------------------
 //
-// Copyright (c) 2014-2018, Ultra-Embedded.com
+// Copyright (c) 2014-2019, Ultra-Embedded.com
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -38,13 +38,14 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF 
 // SUCH DAMAGE.
 //-----------------------------------------------------------------
+
 module riscv_lsu
 (
     // Inputs
      input           clk_i
     ,input           rst_i
     ,input           opcode_valid_i
-    ,input  [ 55:0]  opcode_instr_i
+    ,input  [ 57:0]  opcode_instr_i
     ,input  [ 31:0]  opcode_opcode_i
     ,input  [ 31:0]  opcode_pc_i
     ,input  [  4:0]  opcode_rd_idx_i
@@ -72,6 +73,10 @@ module riscv_lsu
     ,output [ 31:0]  writeback_value_o
     ,output          fault_store_o
     ,output          fault_load_o
+    ,output          fault_misaligned_store_o
+    ,output          fault_misaligned_load_o
+    ,output          fault_page_store_o
+    ,output          fault_page_load_o
     ,output [ 31:0]  fault_addr_o
     ,output          stall_o
 );
@@ -83,9 +88,9 @@ module riscv_lsu
 //-----------------------------------------------------------------
 `include "riscv_defs.v"
 
-//-------------------------------------------------------------
+//-----------------------------------------------------------------
 // Registers / Wires
-//-------------------------------------------------------------
+//-----------------------------------------------------------------
 reg [ 31:0]  mem_addr_q;
 reg [ 31:0]  mem_data_wr_q;
 reg          mem_rd_q;
@@ -94,10 +99,12 @@ reg          mem_cacheable_q;
 reg [ 10:0]  mem_req_tag_q;
 reg          mem_invalidate_q;
 reg          mem_flush_q;
+reg          mem_unaligned_ld_q;
+reg          mem_unaligned_st_q;
 
-//-------------------------------------------------------------
+//-----------------------------------------------------------------
 // Opcode decode
-//-------------------------------------------------------------
+//-----------------------------------------------------------------
 
 wire load_inst_w = (opcode_instr_i[`ENUM_INST_LB]  || 
                     opcode_instr_i[`ENUM_INST_LH]  || 
@@ -115,45 +122,57 @@ wire store_inst_w = (opcode_instr_i[`ENUM_INST_SB]  ||
                      opcode_instr_i[`ENUM_INST_SW]);
 
 reg [31:0]  mem_addr_r;
+reg         mem_unaligned_r;
 always @ *
 begin
+    mem_unaligned_r = 1'b0;
+
     if (opcode_valid_i && opcode_instr_i[`ENUM_INST_CSRRW])
         mem_addr_r = opcode_ra_operand_i;
     else if (opcode_valid_i && load_inst_w)
         mem_addr_r = opcode_ra_operand_i + {{20{opcode_opcode_i[31]}}, opcode_opcode_i[31:20]};
     else
         mem_addr_r = opcode_ra_operand_i + {{20{opcode_opcode_i[31]}}, opcode_opcode_i[31:25], opcode_opcode_i[11:7]};
+
+    if (opcode_valid_i && (opcode_instr_i[`ENUM_INST_SW] || opcode_instr_i[`ENUM_INST_LW] || opcode_instr_i[`ENUM_INST_LWU]))
+        mem_unaligned_r = (mem_addr_r[1:0] != 2'b0);
+    else if (opcode_valid_i && (opcode_instr_i[`ENUM_INST_SH] || opcode_instr_i[`ENUM_INST_LH] || opcode_instr_i[`ENUM_INST_LHU]))
+        mem_unaligned_r = mem_addr_r[0];
 end
 
 wire dcache_flush_w      = opcode_instr_i[`ENUM_INST_CSRRW] && (opcode_opcode_i[31:20] == `CSR_DFLUSH);
 wire dcache_writeback_w  = opcode_instr_i[`ENUM_INST_CSRRW] && (opcode_opcode_i[31:20] == `CSR_DWRITEBACK);
 wire dcache_invalidate_w = opcode_instr_i[`ENUM_INST_CSRRW] && (opcode_opcode_i[31:20] == `CSR_DINVALIDATE);
 
-//-------------------------------------------------------------
+//-----------------------------------------------------------------
 // Sequential
-//-------------------------------------------------------------
+//-----------------------------------------------------------------
 always @ (posedge clk_i or posedge rst_i)
 if (rst_i)
 begin
-    mem_addr_q       <= 32'b0;
-    mem_data_wr_q    <= 32'b0;
-    mem_rd_q         <= 1'b0;
-    mem_wr_q         <= 4'b0;
-    mem_req_tag_q    <= 11'b0;
-    mem_cacheable_q  <= 1'b0;
-    mem_invalidate_q <= 1'b0;
-    mem_flush_q      <= 1'b0;
+    mem_addr_q         <= 32'b0;
+    mem_data_wr_q      <= 32'b0;
+    mem_rd_q           <= 1'b0;
+    mem_wr_q           <= 4'b0;
+    mem_req_tag_q      <= 11'b0;
+    mem_cacheable_q    <= 1'b0;
+    mem_invalidate_q   <= 1'b0;
+    mem_flush_q        <= 1'b0;
+    mem_unaligned_ld_q <= 1'b0;
+    mem_unaligned_st_q <= 1'b0;
 end
 else if (!((mem_invalidate_o || mem_flush_o || mem_rd_o || mem_wr_o != 4'b0) && !mem_accept_i))
 begin
-    mem_addr_q       <= 32'b0;
-    mem_data_wr_q    <= 32'b0;
-    mem_rd_q         <= 1'b0;
-    mem_wr_q         <= 4'b0;
-    mem_cacheable_q  <= 1'b0;
-    mem_req_tag_q    <= 11'b0;
-    mem_invalidate_q <= 1'b0;
-    mem_flush_q      <= 1'b0;
+    mem_addr_q         <= 32'b0;
+    mem_data_wr_q      <= 32'b0;
+    mem_rd_q           <= 1'b0;
+    mem_wr_q           <= 4'b0;
+    mem_cacheable_q    <= 1'b0;
+    mem_req_tag_q      <= 11'b0;
+    mem_invalidate_q   <= 1'b0;
+    mem_flush_q        <= 1'b0;
+    mem_unaligned_ld_q <=  load_inst_w & mem_unaligned_r;
+    mem_unaligned_st_q <= ~load_inst_w & mem_unaligned_r;
 
     // Tag associated with load
     mem_req_tag_q[4:0] <= opcode_rd_idx_i;
@@ -163,14 +182,14 @@ begin
     mem_req_tag_q[9]   <= opcode_instr_i[`ENUM_INST_LW] || opcode_instr_i[`ENUM_INST_LWU];
     mem_req_tag_q[10]  <= load_signed_inst_w;        
 
-    mem_rd_q <= (opcode_valid_i && load_inst_w);
+    mem_rd_q <= (opcode_valid_i && load_inst_w && !mem_unaligned_r);
 
-    if (opcode_valid_i && opcode_instr_i[`ENUM_INST_SW])
+    if (opcode_valid_i && opcode_instr_i[`ENUM_INST_SW] && !mem_unaligned_r)
     begin
         mem_data_wr_q <= opcode_rb_operand_i;
         mem_wr_q      <= 4'hF;
     end
-    else if (opcode_valid_i && opcode_instr_i[`ENUM_INST_SH])
+    else if (opcode_valid_i && opcode_instr_i[`ENUM_INST_SH] && !mem_unaligned_r)
     begin
         case (mem_addr_r[1:0])
         2'h2 :
@@ -240,17 +259,23 @@ assign mem_flush_o      = mem_flush_q;
 // Stall upstream if cache is busy
 assign stall_o          = ((mem_invalidate_o || mem_flush_o || mem_rd_o || mem_wr_o != 4'b0) && !mem_accept_i);
 
-//-------------------------------------------------------------
-// Error handling
-//-------------------------------------------------------------
-// NOTE: Current implementation does not track addresses...
-assign fault_addr_o  = 32'b0;
-assign fault_load_o  = mem_ack_i ? (mem_resp_tag_i[9:7] != 3'b0 && mem_error_i) : 1'b0;
-assign fault_store_o = mem_ack_i ? (mem_resp_tag_i[9:7] == 3'b0 && mem_error_i) : 1'b0;
+//-----------------------------------------------------------------
+// Error handling / faults
+//-----------------------------------------------------------------
+// NOTE: Current implementation does not track addresses for multiple outstanding accesses...
+assign fault_addr_o             = 32'b0;
 
-//-------------------------------------------------------------
+assign fault_load_o             = mem_ack_i ? (mem_resp_tag_i[9:7] != 3'b0 && mem_error_i) : 1'b0;
+assign fault_store_o            = mem_ack_i ? (mem_resp_tag_i[9:7] == 3'b0 && mem_error_i) : 1'b0;
+
+assign fault_misaligned_store_o = mem_unaligned_st_q;
+assign fault_misaligned_load_o  = mem_unaligned_ld_q;
+assign fault_page_store_o       = 1'b0;
+assign fault_page_load_o        = 1'b0;
+
+//-----------------------------------------------------------------
 // Load response
-//-------------------------------------------------------------
+//-----------------------------------------------------------------
 reg [1:0]  addr_lsb_r;
 reg        load_byte_r;
 reg        load_half_r;

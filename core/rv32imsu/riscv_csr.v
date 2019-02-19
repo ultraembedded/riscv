@@ -73,6 +73,10 @@ module riscv_csr
     ,output          stall_o
     ,output          branch_csr_request_o
     ,output [ 31:0]  branch_csr_pc_o
+    ,output          mmu_supervisor_o
+    ,output          mmu_sum_o
+    ,output          mmu_flush_o
+    ,output [ 31:0]  mmu_satp_o
 );
 
 
@@ -95,6 +99,13 @@ reg [1:0]   csr_mpriv_q;
 reg [31:0]  csr_mcycle_q;
 reg [31:0]  csr_mscratch_q;
 
+// CSR - Supervisor
+reg [31:0]  csr_sepc_q;
+reg [31:0]  csr_stvec_q;
+reg [31:0]  csr_scause_q;
+reg [31:0]  csr_stval_q;
+reg [31:0]  csr_satp_q;
+reg [31:0]  csr_sscratch_q;
 
 reg [31:0]  pc_m_q;
 
@@ -117,14 +128,15 @@ assign exc_src_w[`MCAUSE_ECALL_U]             = opcode_valid_i & opcode_instr_i[
 assign exc_src_w[`MCAUSE_ECALL_S]             = opcode_valid_i & opcode_instr_i[`ENUM_INST_ECALL] & (csr_mpriv_q == `PRIV_SUPER);
 assign exc_src_w[`MCAUSE_ECALL_H]             = 1'b0;
 assign exc_src_w[`MCAUSE_ECALL_M]             = opcode_valid_i & opcode_instr_i[`ENUM_INST_ECALL] & (csr_mpriv_q == `PRIV_MACHINE);
-assign exc_src_w[`MCAUSE_PAGE_FAULT_INST]     = 1'b0;
-assign exc_src_w[`MCAUSE_PAGE_FAULT_LOAD]     = 1'b0;
+assign exc_src_w[`MCAUSE_PAGE_FAULT_INST]     = opcode_valid_i & opcode_instr_i[`ENUM_INST_PAGE_FAULT];
+assign exc_src_w[`MCAUSE_PAGE_FAULT_LOAD]     = fault_page_load_i;
 assign exc_src_w[`MCAUSE_PAGE_FAULT_LOAD + 1] = 1'b0;
-assign exc_src_w[`MCAUSE_PAGE_FAULT_STORE]    = 1'b0;
+assign exc_src_w[`MCAUSE_PAGE_FAULT_STORE]    = fault_page_store_i;
 assign exc_src_w[31:16]                       = 16'b0;
 
 `define EXC_SRC_NO_ECALL_EBREAK   (~(`MCAUSE_ECALL_U | `MCAUSE_ECALL_S | `MCAUSE_ECALL_H | `MCAUSE_ECALL_M | `MCAUSE_BREAKPOINT))
 
+wire mmu_exception_w = (opcode_valid_i & opcode_instr_i[`ENUM_INST_PAGE_FAULT]) | fault_page_load_i | fault_page_store_i;
 
 //-----------------------------------------------------------------
 // CSR handling
@@ -148,10 +160,25 @@ reg [1:0]   csr_mpriv_r;
 reg [31:0]  csr_mcycle_r;
 reg [31:0]  csr_mscratch_r;
 
+// CSR - Supervisor
+reg [31:0]  csr_sepc_r;
+reg [31:0]  csr_stvec_r;
+reg [31:0]  csr_scause_r;
+reg [31:0]  csr_stval_r;
+reg [31:0]  csr_satp_r;
+reg [31:0]  csr_sscratch_r;
+
+reg  [31:0] csr_medeleg_q;
+reg  [31:0] csr_medeleg_r;
+
+reg  [31:0] csr_mideleg_q;
+reg  [31:0] csr_mideleg_r;
 
 reg         take_intr_r;
 reg         take_exception_r;
 
+reg         exception_s_r;
+reg         interrupt_s_r;
 
 reg [31:0]  data_r;
 reg [31:0]  result_r;
@@ -198,18 +225,27 @@ begin
                       opcode_instr_i[`ENUM_INST_CSRRWI];
 end
 
-assign csr_access_fault_w = 1'b0;
+// Detect access fault on CSR access
+assign csr_access_fault_w = opcode_valid_i && (set_r | clr_r) && ((write_r && readonly_r) || (csr_mpriv_q < priv_r));
 
 //-----------------------------------------------------------------
 // IRQ handling
 //-----------------------------------------------------------------
 reg [31:0] irq_pending_r;
+reg        m_enabled_r;
+reg [31:0] m_interrupts_r;
+reg        s_enabled_r;
+reg [31:0] s_interrupts_r;
 reg [31:0] irq_masked_r;
 
 always @ *
 begin
     irq_pending_r   = (csr_mip_q & csr_mie_q);
-    irq_masked_r    = csr_sr_q[`SR_MIE_R] ? irq_pending_r : 32'b0;
+    m_enabled_r     = (csr_mpriv_q < `PRIV_MACHINE) || (csr_mpriv_q == `PRIV_MACHINE && csr_sr_q[`SR_MIE_R]);
+    s_enabled_r     = (csr_mpriv_q < `PRIV_SUPER)   || (csr_mpriv_q == `PRIV_SUPER   && csr_sr_q[`SR_SIE_R]);
+    m_interrupts_r  = m_enabled_r    ? (irq_pending_r & ~csr_mideleg_q) : 32'b0;
+    s_interrupts_r  = s_enabled_r    ? (irq_pending_r &  csr_mideleg_q) : 32'b0;
+    irq_masked_r    = (|m_interrupts_r) ? m_interrupts_r : s_interrupts_r;
 end
 
 //-----------------------------------------------------------------
@@ -219,6 +255,8 @@ always @ *
 begin
     take_intr_r     = 1'b0;
     take_exception_r= 1'b0;
+    exception_s_r   = 1'b0;
+    interrupt_s_r   = 1'b0;
     csr_mepc_r      = csr_mepc_q;
     csr_sr_r        = csr_sr_q;
     csr_mcause_r    = csr_mcause_q;
@@ -227,6 +265,14 @@ begin
     csr_mie_r       = csr_mie_q;
     csr_mpriv_r     = csr_mpriv_q;
     csr_mscratch_r  = csr_mscratch_q;
+    csr_medeleg_r   = csr_medeleg_q;
+    csr_mideleg_r   = csr_mideleg_q;
+    csr_sepc_r      = csr_sepc_q;
+    csr_stvec_r     = csr_stvec_q;
+    csr_scause_r    = csr_scause_q;
+    csr_stval_r     = csr_stval_q;
+    csr_satp_r      = csr_satp_q;
+    csr_sscratch_r  = csr_sscratch_q;
 
     result_r        = 32'b0;
     data_r          = 32'b0;
@@ -235,7 +281,16 @@ begin
 
     take_intr_r     = |irq_masked_r;
 
+    // If an opcode is not being presented, another unit is probably issuing a stall.
+    // Do not interrupt during the stall or if executing a load store....
+    if (!opcode_valid_i || load_inst_w || store_inst_w)
+    begin
+        take_intr_r = 1'b0;
+    end
 
+    // Exception/interrupt delegated to supervisor mode
+    exception_s_r = |(exc_src_w    & csr_medeleg_q & `EXC_SRC_NO_ECALL_EBREAK);
+    interrupt_s_r = |(irq_masked_r & csr_mideleg_q);
 
     // Fetch/Load/Store fault
     if (exc_src_w[`MCAUSE_FAULT_FETCH]     ||
@@ -246,12 +301,104 @@ begin
         exc_src_w[`MCAUSE_ILLEGAL_INSTRUCTION])
         take_exception_r = 1'b1;
 
+    // MMU page fault
+    if (mmu_exception_w)
+    begin
+        // MMU exception not handling any interrupt source
+        take_intr_r          = 1'b0;
+        take_exception_r     = 1'b0;
+
+        // Save interrupt / supervisor state
+        csr_sr_r[`SR_SPIE_R] = csr_sr_q[`SR_SIE_R];
+        csr_sr_r[`SR_SPP_R]  = (csr_mpriv_q == `PRIV_SUPER);
+
+        // Disable interrupts and enter supervisor mode
+        csr_sr_r[`SR_SIE_R]  = 1'b0;
+
+        // Raise priviledge to supervisor level
+        csr_mpriv_r          = `PRIV_SUPER;
+
+        // Capture MMU fault address
+        if (fault_page_load_i || fault_page_store_i)
+        begin
+            // Previous instruction was a load or store
+            csr_sepc_r       = pc_m_q;
+            csr_stval_r      = fault_addr_i;
+        end
+        // Instruction page fault
+        else
+        begin
+            csr_stval_r      = opcode_pc_i;
+            csr_sepc_r       = opcode_pc_i;
+        end
+
+        // Exception source (priority encoded)
+        if (exc_src_w[`MCAUSE_PAGE_FAULT_LOAD])
+            csr_scause_r     = `MCAUSE_PAGE_FAULT_LOAD;
+        else if (exc_src_w[`MCAUSE_PAGE_FAULT_STORE])
+            csr_scause_r     = `MCAUSE_PAGE_FAULT_STORE;
+        else
+            csr_scause_r     = `MCAUSE_PAGE_FAULT_INST;
+    end
+    else
     // Exceptions take priority over interrupts
     if (take_exception_r)
     begin
         // Not taking interrupt..
         take_intr_r = 1'b0;
 
+        // Exception delegated to supervisor mode
+        if (csr_mpriv_q <= `PRIV_SUPER && exception_s_r)
+        begin
+            // Save interrupt / supervisor state
+            csr_sr_r[`SR_SPIE_R] = csr_sr_r[`SR_SIE_R];
+            csr_sr_r[`SR_SPP_R]  = (csr_mpriv_q == `PRIV_SUPER);
+
+            // Disable interrupts and enter supervisor mode
+            csr_sr_r[`SR_SIE_R]  = 1'b0;
+
+            // Raise priviledge to supervisor level
+            csr_mpriv_r          = `PRIV_SUPER;
+
+            // Previous instruction was EBREAK, ERET, ECALL
+            // Target inst not executed, so return here later
+            if (branch_csr_request_o)
+                csr_sepc_r   = branch_csr_pc_o;
+            // Taking interrupt instead of executing instruction handled by this functional unit?
+            // Target inst not executed, so return here later
+            else if (valid_unit_inst_w)
+                csr_sepc_r   = opcode_pc_i;
+            // Branch request executed in exec (not squashed)
+            else if (branch_exec_request_i)
+                csr_sepc_r   = branch_exec_pc_i;
+            // Valid instruction, executed by another unit
+            else if (opcode_valid_i)
+                csr_sepc_r   = opcode_pc_i + 32'd4;
+            // Valid instruction not ready, re-run it later
+            else
+                csr_sepc_r   = opcode_pc_i;
+
+            if (exc_src_w[`MCAUSE_ILLEGAL_INSTRUCTION])
+                csr_scause_r = `MCAUSE_ILLEGAL_INSTRUCTION;
+            else if (exc_src_w[`MCAUSE_FAULT_FETCH])
+                csr_scause_r = `MCAUSE_FAULT_FETCH;
+            else if (exc_src_w[`MCAUSE_FAULT_LOAD])
+                csr_scause_r = `MCAUSE_FAULT_LOAD;
+            else if (exc_src_w[`MCAUSE_FAULT_STORE])
+                csr_scause_r = `MCAUSE_FAULT_STORE;
+            else if (exc_src_w[`MCAUSE_MISALIGNED_LOAD])
+                csr_scause_r = `MCAUSE_MISALIGNED_LOAD;
+            else if (exc_src_w[`MCAUSE_MISALIGNED_STORE])
+                csr_scause_r = `MCAUSE_MISALIGNED_STORE;
+
+            if (exc_src_w[`MCAUSE_MISALIGNED_LOAD] || exc_src_w[`MCAUSE_MISALIGNED_STORE])
+                csr_stval_r = fault_addr_i;
+            // Not set...
+            else
+                csr_stval_r = 32'b0;
+        end
+        else
+        begin
             // Save interrupt / supervisor state
             csr_sr_r[`SR_MPIE_R] = csr_sr_r[`SR_MIE_R];
             csr_sr_r[`SR_MPP_R]  = csr_mpriv_q;
@@ -292,10 +439,61 @@ begin
                 csr_mcause_r = `MCAUSE_MISALIGNED_LOAD;
             else if (exc_src_w[`MCAUSE_MISALIGNED_STORE])
                 csr_mcause_r = `MCAUSE_MISALIGNED_STORE;
+        end
     end
     // We will be taking an interrupt, record the reason
     else if (take_intr_r)
     begin
+        // Interrupt delegated to supervisor mode
+        if (csr_mpriv_q <= `PRIV_SUPER && interrupt_s_r)
+        begin
+            // Save interrupt / supervisor state
+            csr_sr_r[`SR_SPIE_R] = csr_sr_r[`SR_SIE_R];
+            csr_sr_r[`SR_SPP_R]  = (csr_mpriv_q == `PRIV_SUPER);
+
+            // Disable interrupts and enter supervisor mode
+            csr_sr_r[`SR_SIE_R]  = 1'b0;
+
+            // Raise priviledge to supervisor level
+            csr_mpriv_r          = `PRIV_SUPER;
+
+            // Previous instruction was EBREAK, ERET, ECALL
+            // Target inst not executed, so return here later
+            if (branch_csr_request_o)
+                csr_sepc_r   = branch_csr_pc_o;
+            // Taking interrupt instead of executing instruction handled by this functional unit?
+            // Target inst not executed, so return here later
+            else if (valid_unit_inst_w)
+                csr_sepc_r   = opcode_pc_i;
+            // Branch request executed in exec (not squashed)
+            else if (branch_exec_request_i)
+                csr_sepc_r   = branch_exec_pc_i;
+            // Valid instruction, executed by another unit
+            else if (opcode_valid_i)
+                csr_sepc_r   = opcode_pc_i + 32'd4;
+            // Valid instruction not ready, re-run it later
+            else
+                csr_sepc_r   = opcode_pc_i;
+
+            // NOTE: Lowest interrupt number wins (in this implementation)
+            if (irq_masked_r[`IRQ_S_SOFT])
+                csr_scause_r = `MCAUSE_INTERRUPT + `IRQ_S_SOFT;
+            else if (irq_masked_r[`IRQ_M_SOFT])
+                csr_scause_r = `MCAUSE_INTERRUPT + `IRQ_M_SOFT;
+            else if (irq_masked_r[`IRQ_S_TIMER])
+                csr_scause_r = `MCAUSE_INTERRUPT + `IRQ_S_TIMER;
+            else if (irq_masked_r[`IRQ_M_TIMER])
+                csr_scause_r = `MCAUSE_INTERRUPT + `IRQ_M_TIMER;
+            else if (irq_masked_r[`IRQ_S_EXT])
+                csr_scause_r = `MCAUSE_INTERRUPT + `IRQ_S_EXT;
+            else if (irq_masked_r[`IRQ_M_EXT])
+                csr_scause_r = `MCAUSE_INTERRUPT + `IRQ_M_EXT;
+
+            // Not set...
+            csr_stval_r = 32'b0;
+        end
+        else
+        begin
             // Save interrupt / supervisor state
             csr_sr_r[`SR_MPIE_R] = csr_sr_r[`SR_MIE_R];
             csr_sr_r[`SR_MPP_R]  = csr_mpriv_q;
@@ -337,6 +535,7 @@ begin
                 csr_mcause_r = `MCAUSE_INTERRUPT + `IRQ_S_EXT;
             else if (irq_masked_r[`IRQ_M_EXT])
                 csr_mcause_r = `MCAUSE_INTERRUPT + `IRQ_M_EXT;
+        end
     end
     // CSR modify instruction
     else if (opcode_valid_i && (set_r || clr_r))
@@ -439,7 +638,141 @@ begin
         `CSR_MISA:
         begin
             result_r = `MISA_RV32 | `MISA_RVI
+                       | `MISA_RVM
+                       | `MISA_RVS | `MISA_RVU
                        ;
+        end
+        `CSR_MEDELEG:
+        begin
+            data_r   = data_r     & `CSR_MEDELEG_MASK;
+            result_r = csr_medeleg_q & `CSR_MEDELEG_MASK;
+
+            if (set_r && clr_r)
+                csr_medeleg_r = data_r;
+            else if (set_r)
+                csr_medeleg_r = csr_medeleg_r | data_r;
+            else if (clr_r)
+                csr_medeleg_r = csr_medeleg_r & ~data_r;
+        end
+        `CSR_MIDELEG:
+        begin
+            data_r   = data_r     & `CSR_MIDELEG_MASK;
+            result_r = csr_mideleg_q & `CSR_MIDELEG_MASK;
+
+            if (set_r && clr_r)
+                csr_mideleg_r = data_r;
+            else if (set_r)
+                csr_mideleg_r = csr_mideleg_r | data_r;
+            else if (clr_r)
+                csr_mideleg_r = csr_mideleg_r & ~data_r;
+        end
+        `CSR_SEPC:
+        begin
+            data_r   = data_r     & `CSR_SEPC_MASK;
+            result_r = csr_sepc_q & `CSR_SEPC_MASK;
+
+            if (set_r && clr_r)
+                csr_sepc_r = data_r;
+            else if (set_r)
+                csr_sepc_r = csr_sepc_r | data_r;
+            else if (clr_r)
+                csr_sepc_r = csr_sepc_r & ~data_r;
+        end
+        `CSR_STVEC:
+        begin
+            data_r   = data_r     & `CSR_STVEC_MASK;
+            result_r = csr_stvec_q & `CSR_STVEC_MASK;
+
+            if (set_r && clr_r)
+                csr_stvec_r = data_r;
+            else if (set_r)
+                csr_stvec_r = csr_stvec_r | data_r;
+            else if (clr_r)
+                csr_stvec_r = csr_stvec_r & ~data_r;
+        end
+        `CSR_SCAUSE:
+        begin
+            data_r   = data_r     & `CSR_SCAUSE_MASK;
+            result_r = csr_scause_q & `CSR_SCAUSE_MASK;
+
+            if (set_r && clr_r)
+                csr_scause_r = data_r;
+            else if (set_r)
+                csr_scause_r = csr_scause_r | data_r;
+            else if (clr_r)
+                csr_scause_r = csr_scause_r & ~data_r;
+        end
+        `CSR_SIP:
+        begin
+            data_r   = data_r    & `CSR_SIP_MASK;
+            result_r = csr_mip_r & `CSR_SIP_MASK;
+
+            if (set_r && clr_r)
+                csr_mip_r = data_r;
+            else if (set_r)
+                csr_mip_r = csr_mip_r | data_r;
+            else if (clr_r)
+                csr_mip_r = csr_mip_r & ~data_r;
+        end
+        `CSR_SIE:
+        begin
+            data_r   = data_r     & `CSR_SIE_MASK;
+            result_r = csr_mie_q & `CSR_SIE_MASK;
+
+            if (set_r && clr_r)
+                csr_mie_r = data_r;
+            else if (set_r)
+                csr_mie_r = csr_mie_r | data_r;
+            else if (clr_r)
+                csr_mie_r = csr_mie_r & ~data_r;
+        end
+        `CSR_STVAL:
+        begin
+            data_r   = data_r     & `CSR_STVAL_MASK;
+            result_r = csr_stval_q & `CSR_STVAL_MASK;
+
+            if (set_r && clr_r)
+                csr_stval_r = data_r;
+            else if (set_r)
+                csr_stval_r = csr_stval_r | data_r;
+            else if (clr_r)
+                csr_stval_r = csr_stval_r & ~data_r;
+        end
+        `CSR_SATP:
+        begin
+            data_r   = data_r     & `CSR_SATP_MASK;
+            result_r = csr_satp_q & `CSR_SATP_MASK;
+
+            if (set_r && clr_r)
+                csr_satp_r = data_r;
+            else if (set_r)
+                csr_satp_r = csr_satp_r | data_r;
+            else if (clr_r)
+                csr_satp_r = csr_satp_r & ~data_r;
+        end
+        `CSR_SSCRATCH:
+        begin
+            data_r   = data_r     & `CSR_SSCRATCH_MASK;
+            result_r = csr_sscratch_q & `CSR_SSCRATCH_MASK;
+
+            if (set_r && clr_r)
+                csr_sscratch_r = data_r;
+            else if (set_r)
+                csr_sscratch_r = csr_sscratch_r | data_r;
+            else if (clr_r)
+                csr_sscratch_r = csr_sscratch_r & ~data_r;
+        end
+        `CSR_SSTATUS:
+        begin
+            data_r   = data_r     & `CSR_SSTATUS_MASK;
+            result_r = csr_sr_q & `CSR_SSTATUS_MASK;
+
+            if (set_r && clr_r)
+                csr_sr_r = data_r;
+            else if (set_r)
+                csr_sr_r = csr_sr_r | data_r;
+            else if (clr_r)
+                csr_sr_r = csr_sr_r & ~data_r;
         end
         default:
             ;
@@ -448,6 +781,33 @@ begin
     // System Call / Breakpoint
     else if (opcode_valid_i && (opcode_instr_i[`ENUM_INST_ECALL] | opcode_instr_i[`ENUM_INST_EBREAK]))
     begin
+        // Exception delegated to supervisor mode
+        if ((csr_mpriv_q <= `PRIV_SUPER) && (|(exc_src_w & csr_medeleg_q)))
+        begin
+            // Save interrupt / supervisor state
+            csr_sr_r[`SR_SPIE_R] = csr_sr_q[`SR_SIE_R];
+            csr_sr_r[`SR_SPP_R]  = (csr_mpriv_q == `PRIV_SUPER);
+
+            // Disable interrupts and enter supervisor mode
+            csr_sr_r[`SR_SIE_R]  = 1'b0;
+
+            // Raise priviledge to supervisor level
+            csr_mpriv_r          = `PRIV_SUPER;
+
+            // Save PC of next instruction (not yet executed)
+            csr_sepc_r           = opcode_pc_i;
+
+            // Exception source
+            if (opcode_instr_i[`ENUM_INST_EBREAK])
+                csr_scause_r     = `MCAUSE_BREAKPOINT;
+            else
+                csr_scause_r     = `MCAUSE_ECALL_U + {30'b0, csr_mpriv_q};
+
+            // Supervisor Trap Value is cleared for these exceptions
+            csr_stval_r = 32'b0;
+        end
+        else
+        begin
             // Save interrupt / supervisor state
             csr_sr_r[`SR_MPIE_R] = csr_sr_r[`SR_MIE_R];
             csr_sr_r[`SR_MPP_R]  = csr_mpriv_q;
@@ -466,10 +826,14 @@ begin
                 csr_mcause_r     = `MCAUSE_BREAKPOINT;
             else
                 csr_mcause_r     = `MCAUSE_ECALL_U + {30'b0, csr_mpriv_q};
+        end
     end
     // Return from interrupt
     else if (opcode_valid_i && opcode_instr_i[`ENUM_INST_ERET])
     begin
+        // MRET (return from machine)
+        if (opcode_opcode_i[`INST_MRET_R])
+        begin
             // Set privilege level to previous MPP
             csr_mpriv_r          = csr_sr_r[`SR_MPP_R];
 
@@ -479,11 +843,30 @@ begin
 
             // Set next MPP to user mode
             csr_sr_r[`SR_MPP_R] = `SR_MPP_U;
+        end
+        // SRET (return from supervisor)
+        else
+        begin
+            // Set privilege level to previous privilege level
+            csr_mpriv_r          = csr_sr_r[`SR_SPP_R] ? `PRIV_SUPER : `PRIV_USER;
+
+            // Interrupt enable pop
+            csr_sr_r[`SR_SIE_R]  = csr_sr_r[`SR_SPIE_R];
+            csr_sr_r[`SR_SPIE_R] = 1'b1;
+
+            // Set next SPP to user mode
+            csr_sr_r[`SR_SPP_R] = 1'b0;
+        end
     end
 
     // External interrupts
     if (intr_i)
     begin
+        // External interrupts handled by supervisor
+        if (csr_mideleg_q[`SR_IP_SEIP_R])
+            csr_mip_r[`SR_IP_SEIP_R] = 1'b1;
+        // External interrupts handled by machine
+        else
             csr_mip_r[`SR_IP_MEIP_R] = 1'b1;
     end    
 end
@@ -503,6 +886,14 @@ begin
     csr_mpriv_q        <= `PRIV_MACHINE;
     csr_mcycle_q       <= 32'b0;
     csr_mscratch_q     <= 32'b0;
+    csr_medeleg_q      <= 32'b0;
+    csr_mideleg_q      <= 32'b0;
+    csr_sepc_q         <= 32'b0;
+    csr_stvec_q        <= 32'b0;
+    csr_scause_q       <= 32'b0;
+    csr_stval_q        <= 32'b0;
+    csr_satp_q         <= 32'b0;
+    csr_sscratch_q     <= 32'b0;
 end
 else
 begin
@@ -512,9 +903,17 @@ begin
     csr_mtvec_q        <= csr_mtvec_r;
     csr_mip_q          <= csr_mip_r;
     csr_mie_q          <= csr_mie_r;
-    csr_mpriv_q        <= `PRIV_MACHINE;
+    csr_mpriv_q        <= csr_mpriv_r;
     csr_mcycle_q       <= csr_mcycle_r;
     csr_mscratch_q     <= csr_mscratch_r;
+    csr_medeleg_q      <= csr_medeleg_r;
+    csr_mideleg_q      <= csr_mideleg_r;
+    csr_sepc_q         <= csr_sepc_r;
+    csr_stvec_q        <= csr_stvec_r;
+    csr_scause_q       <= csr_scause_r;
+    csr_stval_q        <= csr_stval_r;
+    csr_satp_q         <= csr_satp_r;
+    csr_sscratch_q     <= csr_sscratch_r;
 
 `ifdef verilator
     // CSR SIM_CTRL
@@ -569,14 +968,15 @@ begin
 
     // Scoreboard will have been allocated so de-allocate if an allocated
     // instruction was aborted
-    writeback_squash_q <= (valid_unit_inst_w & (take_exception_r | take_intr_r)) | fault_misaligned_load_i;
+    writeback_squash_q <= (valid_unit_inst_w & (take_exception_r | take_intr_r)) | fault_page_load_i | fault_misaligned_load_i;
 end
 
 assign writeback_idx_o    = {5{writeback_en_q | writeback_squash_q}} & writeback_idx_q;
 assign writeback_value_o  = writeback_value_q;
 assign writeback_squash_o = writeback_squash_q;
 
-assign stall_o           = fault_misaligned_load_i | fault_misaligned_store_i;
+// Stall on load/store fault (as the following instruction is not executed)
+assign stall_o           = fault_page_load_i | fault_page_store_i | fault_misaligned_load_i | fault_misaligned_store_i;
 
 //-----------------------------------------------------------------
 // Execute - Branch operations
@@ -589,34 +989,58 @@ begin
     branch_r        = 1'b0;
     branch_target_r = 32'b0;
 
+    if (mmu_exception_w)
+    begin
+        branch_r        = 1'b1;
+        branch_target_r = csr_stvec_q;
+    end
+    else
     if (take_exception_r)
     begin
         branch_r        = 1'b1;
 
+        if (csr_mpriv_q <= `PRIV_SUPER && exception_s_r)
+            branch_target_r = csr_stvec_q;
+        else
             branch_target_r = csr_mtvec_q;
     end
     else if (take_intr_r)
     begin
         branch_r        = 1'b1;
 
+        if (csr_mpriv_q <= `PRIV_SUPER && interrupt_s_r)
+            branch_target_r = csr_stvec_q;
+        else
             branch_target_r = csr_mtvec_q;
     end
     else if (opcode_instr_i[`ENUM_INST_ECALL])
     begin
         branch_r        = opcode_valid_i;
 
+        // Exception delegated to supervisor mode
+        if ((csr_mpriv_q <= `PRIV_SUPER) && (|(exc_src_w & csr_medeleg_q)))
+            branch_target_r = csr_stvec_q;
+        else
             branch_target_r = csr_mtvec_q;
     end
     else if (opcode_instr_i[`ENUM_INST_EBREAK])
     begin
         branch_r        = opcode_valid_i;
 
+        // Exception delegated to supervisor mode
+        if ((csr_mpriv_q <= `PRIV_SUPER) && (|(exc_src_w & csr_medeleg_q)))
+            branch_target_r = csr_stvec_q;
+        else
             branch_target_r = csr_mtvec_q;
     end
     else if (opcode_instr_i[`ENUM_INST_ERET])
     begin
         branch_r        = opcode_valid_i;
 
+        // SRET (return from super)
+        if (!opcode_opcode_i[`INST_MRET_R])
+            branch_target_r = csr_sepc_q;
+        else
             branch_target_r = csr_mepc_q;
     end
 
@@ -648,6 +1072,11 @@ end
 assign branch_csr_request_o = branch_q;
 assign branch_csr_pc_o      = branch_target_q;
 
+wire   mmu_enable_w     = (csr_mpriv_q != `PRIV_MACHINE) && csr_satp_q[31];
+assign mmu_satp_o       = {mmu_enable_w, csr_satp_q[30:0]};
+assign mmu_flush_o      = (opcode_valid_i && (set_r || clr_r) && (imm12_r[11:0] == `CSR_SATP));
+assign mmu_supervisor_o = (csr_mpriv_q == `PRIV_SUPER);
+assign mmu_sum_o        = csr_sr_q[`SR_SUM_R];
 
 
 

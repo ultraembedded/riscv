@@ -52,6 +52,7 @@ module riscv_fetch
     ,input           icache_error_i
     ,input  [ 31:0]  icache_inst_i
     ,input  [ 31:0]  icache_inst_pc_i
+    ,input           mmu_fetch_fault_i
     ,input           fetch_invalidate_i
 
     // Outputs
@@ -144,7 +145,7 @@ begin
 
     // ICACHE fetch tracking
     if (icache_rd_o && icache_accept_i)
-        icache_fetch_q <= 1'b1;
+        icache_fetch_q <= ~mmu_fetch_fault_i;
     else if (icache_valid_i)
         icache_fetch_q <= 1'b0;
 end
@@ -157,22 +158,55 @@ else if (icache_invalidate_o && !icache_accept_i)
 else
     icache_invalidate_q <= 1'b0;
 
+reg [31:0] pc_d_q;
+
+always @ (posedge clk_i or posedge rst_i)
+if (rst_i)
+    pc_d_q <= 32'b0;
+else if (icache_rd_o && icache_accept_i)
+    pc_d_q <= icache_pc_o;
+
+
+// Page Fault: mmu_fetch_fault_i is combinatorial based on icache_rd_o & icache_pc_o
+// On page fault, the access will be squashed before the cache, so we need to invent
+// a response here..
+reg fetch_page_fault_q;
+always @ (posedge clk_i or posedge rst_i)
+if (rst_i)
+    fetch_page_fault_q <= 1'b0;
+else if (icache_rd_o && icache_accept_i && mmu_fetch_fault_i)
+    fetch_page_fault_q <= 1'b1;
+else
+    fetch_page_fault_q <= 1'b0;
 
 //-------------------------------------------------------------
 // Outputs
 //-------------------------------------------------------------
-assign icache_rd_o         = active_q & !stall_w;
+assign icache_rd_o         = active_q & fetch_accept_i & !icache_busy_w;
 assign icache_pc_o         = branch_w ? branch_pc_w : fetch_pc_q;
 assign icache_flush_o      = fetch_invalidate_i | icache_invalidate_q;
 assign icache_invalidate_o = 1'b0;
 
 
-// On fault, insert known invalid opcode into the pipeline
-wire [31:0] instruction_w  = icache_error_i ? `INST_FAULT : icache_inst_i;
+reg [31:0] instruction_r;
+always @ *
+begin
+    instruction_r = 32'b0;
 
-assign fetch_valid_o = (icache_valid_i || skid_valid_q) & !branch_w;
-assign fetch_pc_o    = skid_valid_q ? skid_buffer_q[63:32] : icache_inst_pc_i;
-assign fetch_instr_o = skid_valid_q ? skid_buffer_q[31:0]  : instruction_w;
+    // Page fault on fetch
+    if (fetch_page_fault_q)
+        instruction_r = `INST_PAGE_FAULT;
+    // Fetch error (bad physical access address)
+    else if (icache_error_i)
+        instruction_r = `INST_FAULT;
+    // Normal cache response
+    else
+        instruction_r = icache_inst_i;
+end
+
+assign fetch_valid_o = (fetch_page_fault_q || icache_valid_i || skid_valid_q) & !branch_w;
+assign fetch_pc_o    = skid_valid_q ? skid_buffer_q[63:32] : pc_d_q;
+assign fetch_instr_o = skid_valid_q ? skid_buffer_q[31:0]  : instruction_r;
 
 
 endmodule

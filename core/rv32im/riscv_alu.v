@@ -1,15 +1,15 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.9
+//                            V0.9.5
 //                     Ultra-Embedded.com
-//                     Copyright 2014-2018
+//                     Copyright 2014-2019
 //
 //                   admin@ultra-embedded.com
 //
 //                       License: BSD
 //-----------------------------------------------------------------
 //
-// Copyright (c) 2014-2018, Ultra-Embedded.com
+// Copyright (c) 2014-2019, Ultra-Embedded.com
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -38,6 +38,7 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF 
 // SUCH DAMAGE.
 //-----------------------------------------------------------------
+
 module riscv_alu
 (
     // Inputs

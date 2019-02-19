@@ -58,6 +58,9 @@ module riscv_lsu
     ,input           mem_ack_i
     ,input           mem_error_i
     ,input  [ 10:0]  mem_resp_tag_i
+    ,input           mmu_load_fault_i
+    ,input           mmu_store_fault_i
+    ,input  [ 31:0]  mmu_fault_addr_i
 
     // Outputs
     ,output [ 31:0]  mem_addr_o
@@ -236,7 +239,7 @@ begin
 
 /* verilator lint_off UNSIGNED */
 /* verilator lint_off CMPCONST */
-    mem_cacheable_q  <= mem_addr_r >= 32'h0 && mem_addr_r <= 32'h7fffffff;
+    mem_cacheable_q  <= 1'b1;
 /* verilator lint_on CMPCONST */
 /* verilator lint_on UNSIGNED */
 
@@ -262,16 +265,27 @@ assign stall_o          = ((mem_invalidate_o || mem_flush_o || mem_rd_o || mem_w
 //-----------------------------------------------------------------
 // Error handling / faults
 //-----------------------------------------------------------------
-// NOTE: Current implementation does not track addresses for multiple outstanding accesses...
-assign fault_addr_o             = 32'b0;
+reg [31:0] fault_addr_r;
+
+always @ *
+begin
+    // NOTE: Current implementation does not track addresses for multiple outstanding accesses...
+    fault_addr_r = 32'b0;
+
+    // Load / Store page faults take priority
+    if (mmu_load_fault_i || mmu_store_fault_i)
+        fault_addr_r = mmu_fault_addr_i;
+end
+
+assign fault_addr_o             = fault_addr_r;
 
 assign fault_load_o             = mem_ack_i ? (mem_resp_tag_i[9:7] != 3'b0 && mem_error_i) : 1'b0;
 assign fault_store_o            = mem_ack_i ? (mem_resp_tag_i[9:7] == 3'b0 && mem_error_i) : 1'b0;
 
 assign fault_misaligned_store_o = mem_unaligned_st_q;
 assign fault_misaligned_load_o  = mem_unaligned_ld_q;
-assign fault_page_store_o       = 1'b0;
-assign fault_page_load_o        = 1'b0;
+assign fault_page_store_o       = mmu_store_fault_i;
+assign fault_page_load_o        = mmu_load_fault_i;
 
 //-----------------------------------------------------------------
 // Load response

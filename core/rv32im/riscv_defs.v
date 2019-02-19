@@ -1,15 +1,15 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.9
+//                            V0.9.5
 //                     Ultra-Embedded.com
-//                     Copyright 2014-2018
+//                     Copyright 2014-2019
 //
 //                   admin@ultra-embedded.com
 //
 //                       License: BSD
 //-----------------------------------------------------------------
 //
-// Copyright (c) 2014-2018, Ultra-Embedded.com
+// Copyright (c) 2014-2019, Ultra-Embedded.com
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -112,7 +112,9 @@
 `define        ENUM_INST_REM    53
 `define       ENUM_INST_REMU    54
 `define       ENUM_INST_FAULT   55
-`define        ENUM_INST_MAX    56
+`define  ENUM_INST_PAGE_FAULT   56
+`define     ENUM_INST_INVALID   57
+`define        ENUM_INST_MAX    58
 
 //--------------------------------------------------------------------
 // Instructions Masks
@@ -342,9 +344,23 @@
 `define INST_WFI 32'h10500073
 `define INST_WFI_MASK 32'hffff8fff
 
-// Fault opcode (re-purposed FADD)
-`define INST_FAULT       32'h53
-`define INST_FAULT_MASK  32'hfe00007f
+// fence
+`define INST_FENCE 32'hf
+`define INST_FENCE_MASK 32'h707f
+
+// sfence
+`define INST_SFENCE 32'h12000073
+`define INST_SFENCE_MASK 32'hfe007fff
+
+// fence.i
+`define INST_IFENCE 32'h100f
+`define INST_IFENCE_MASK 32'h707f
+
+// Fault opcodes (re-purposed FADD,FSUB)
+`define INST_FAULT           32'h53
+`define INST_FAULT_MASK      32'hfe00007f
+`define INST_PAGE_FAULT      32'h8000053
+`define INST_PAGE_FAULT_MASK 32'hfe00007f
 
 //--------------------------------------------------------------------
 // Privilege levels
@@ -400,9 +416,9 @@
     `define MISA_RVS      32'h00040000
     `define MISA_RVU      32'h00100000
 `define CSR_MEDELEG       12'h302
-`define CSR_MEDELEG_MASK  32'hFFFFFFFF
+`define CSR_MEDELEG_MASK  32'h0000FFFF
 `define CSR_MIDELEG       12'h303
-`define CSR_MIDELEG_MASK  32'hFFFFFFFF
+`define CSR_MIDELEG_MASK  32'h0000FFFF
 `define CSR_MIE           12'h304
 `define CSR_MIE_MASK      `IRQ_MASK
 `define CSR_MTVEC         12'h305
@@ -415,6 +431,8 @@
 `define CSR_MCAUSE_MASK   32'h8000000F
 `define CSR_MIP           12'h344
 `define CSR_MIP_MASK      `IRQ_MASK
+`define CSR_MCYCLE        12'hc00
+`define CSR_MCYCLE_MASK   32'hFFFFFFFF
 `define CSR_MTIME         12'hc01
 `define CSR_MTIME_MASK    32'hFFFFFFFF
 `define CSR_MTIMEH        12'hc81

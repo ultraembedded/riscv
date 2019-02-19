@@ -1,15 +1,15 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.9
+//                            V0.9.5
 //                     Ultra-Embedded.com
-//                     Copyright 2014-2018
+//                     Copyright 2014-2019
 //
 //                   admin@ultra-embedded.com
 //
 //                       License: BSD
 //-----------------------------------------------------------------
 //
-// Copyright (c) 2014-2018, Ultra-Embedded.com
+// Copyright (c) 2014-2019, Ultra-Embedded.com
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -38,6 +38,7 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF 
 // SUCH DAMAGE.
 //-----------------------------------------------------------------
+
 module riscv_core
 (
     // Inputs
@@ -72,11 +73,13 @@ module riscv_core
     ,output [ 31:0]  mem_i_pc_o
 );
 
+wire           fetch_invalidate_w;
 wire  [ 31:0]  fetch_branch_pc_w;
+wire           fault_page_load_w;
 wire  [  4:0]  opcode_rd_idx_w;
 wire           fetch_accept_w;
 wire  [ 31:0]  fault_addr_w;
-wire  [ 55:0]  opcode_instr_w;
+wire  [ 57:0]  opcode_instr_w;
 wire  [ 31:0]  fetch_pc_w;
 wire           fault_load_w;
 wire           exec_stall_w;
@@ -87,6 +90,7 @@ wire           branch_csr_request_w;
 wire  [  4:0]  writeback_exec_idx_w;
 wire  [  4:0]  writeback_mem_idx_w;
 wire  [ 31:0]  opcode_pc_w;
+wire           fault_page_store_w;
 wire           lsu_opcode_valid_w;
 wire           writeback_csr_squash_w;
 wire  [ 31:0]  branch_pc_w;
@@ -99,7 +103,9 @@ wire  [  4:0]  writeback_csr_idx_w;
 wire  [ 31:0]  writeback_mem_value_w;
 wire           csr_stall_w;
 wire  [ 31:0]  opcode_opcode_w;
+wire           fault_misaligned_store_w;
 wire           fetch_branch_w;
+wire           fault_misaligned_load_w;
 wire  [ 31:0]  writeback_exec_value_w;
 wire  [ 31:0]  branch_csr_pc_w;
 wire  [ 31:0]  writeback_csr_value_w;
@@ -128,8 +134,13 @@ riscv_csr u_csr
     ,.branch_exec_request_i(branch_request_w)
     ,.branch_exec_pc_i(branch_pc_w)
     ,.cpu_id_i(cpu_id_i)
+    ,.reset_vector_i(reset_vector_i)
     ,.fault_store_i(fault_store_w)
     ,.fault_load_i(fault_load_w)
+    ,.fault_misaligned_store_i(fault_misaligned_store_w)
+    ,.fault_misaligned_load_i(fault_misaligned_load_w)
+    ,.fault_page_store_i(fault_page_store_w)
+    ,.fault_page_load_i(fault_page_load_w)
     ,.fault_addr_i(fault_addr_w)
 
     // Outputs
@@ -176,6 +187,10 @@ riscv_lsu u_lsu
     ,.writeback_value_o(writeback_mem_value_w)
     ,.fault_store_o(fault_store_w)
     ,.fault_load_o(fault_load_w)
+    ,.fault_misaligned_store_o(fault_misaligned_store_w)
+    ,.fault_misaligned_load_o(fault_misaligned_load_w)
+    ,.fault_page_store_o(fault_page_store_w)
+    ,.fault_page_load_o(fault_page_load_w)
     ,.fault_addr_o(fault_addr_w)
     ,.stall_o(lsu_stall_w)
 );
@@ -195,7 +210,6 @@ riscv_exec u_exec
     ,.opcode_rb_idx_i(opcode_rb_idx_w)
     ,.opcode_ra_operand_i(opcode_ra_operand_w)
     ,.opcode_rb_operand_i(opcode_rb_operand_w)
-    ,.reset_vector_i(reset_vector_i)
 
     // Outputs
     ,.branch_request_o(branch_request_w)
@@ -252,6 +266,7 @@ riscv_decode u_decode
     ,.opcode_rb_idx_o(opcode_rb_idx_w)
     ,.opcode_ra_operand_o(opcode_ra_operand_w)
     ,.opcode_rb_operand_o(opcode_rb_operand_w)
+    ,.fetch_invalidate_o(fetch_invalidate_w)
 );
 
 
@@ -268,6 +283,7 @@ riscv_fetch u_fetch
     ,.icache_error_i(mem_i_error_i)
     ,.icache_inst_i(mem_i_inst_i)
     ,.icache_inst_pc_i(mem_i_inst_pc_i)
+    ,.fetch_invalidate_i(fetch_invalidate_w)
 
     // Outputs
     ,.fetch_valid_o(fetch_valid_w)

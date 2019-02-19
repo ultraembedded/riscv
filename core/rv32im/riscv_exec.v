@@ -1,15 +1,15 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.9
+//                            V0.9.5
 //                     Ultra-Embedded.com
-//                     Copyright 2014-2018
+//                     Copyright 2014-2019
 //
 //                   admin@ultra-embedded.com
 //
 //                       License: BSD
 //-----------------------------------------------------------------
 //
-// Copyright (c) 2014-2018, Ultra-Embedded.com
+// Copyright (c) 2014-2019, Ultra-Embedded.com
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -38,13 +38,14 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF 
 // SUCH DAMAGE.
 //-----------------------------------------------------------------
+
 module riscv_exec
 (
     // Inputs
      input           clk_i
     ,input           rst_i
     ,input           opcode_valid_i
-    ,input  [ 55:0]  opcode_instr_i
+    ,input  [ 57:0]  opcode_instr_i
     ,input  [ 31:0]  opcode_opcode_i
     ,input  [ 31:0]  opcode_pc_i
     ,input  [  4:0]  opcode_rd_idx_i
@@ -52,7 +53,6 @@ module riscv_exec
     ,input  [  4:0]  opcode_rb_idx_i
     ,input  [ 31:0]  opcode_ra_operand_i
     ,input  [ 31:0]  opcode_rb_operand_i
-    ,input  [ 31:0]  reset_vector_i
 
     // Outputs
     ,output          branch_request_o
@@ -74,23 +74,6 @@ module riscv_exec
 // Registers / Wires
 //-------------------------------------------------------------
 reg [4:0]   rd_x_q;
-reg         reset_q;
-
-reg [3:0]   alu_func_q;
-reg [31:0]  alu_input_a_q;
-reg [31:0]  alu_input_b_q;
-
-//-------------------------------------------------------------
-// Instances
-//-------------------------------------------------------------
-riscv_alu
-u_alu
-(
-    .alu_op_i(alu_func_q),
-    .alu_a_i(alu_input_a_q),
-    .alu_b_i(alu_input_b_q),
-    .alu_p_o(writeback_value_o)
-);
 
 //-------------------------------------------------------------
 // Opcode decode
@@ -330,12 +313,7 @@ begin
     // Default branch_r target is relative to current PC
     branch_target_r = opcode_pc_i + bimm_r;
 
-    if (reset_q)
-    begin
-        branch_r        = 1'b1;
-        branch_target_r = reset_vector_i;
-    end
-    else if (opcode_instr_i[`ENUM_INST_JAL]) // jal
+    if (opcode_instr_i[`ENUM_INST_JAL]) // jal
     begin
         branch_r        = 1'b1;
         branch_target_r = opcode_pc_i + jimm20_r;
@@ -360,7 +338,7 @@ begin
         branch_r      = (opcode_ra_operand_i >= opcode_rb_operand_i);
 end
 
-assign branch_request_o = branch_r && (opcode_valid_i || reset_q);
+assign branch_request_o = branch_r && opcode_valid_i;
 assign branch_pc_o      = branch_target_r;
 
 //-------------------------------------------------------------
@@ -368,26 +346,40 @@ assign branch_pc_o      = branch_target_r;
 //-------------------------------------------------------------
 always @ (posedge clk_i or posedge rst_i)
 if (rst_i)
-begin
-    rd_x_q         <= 5'b0;
-    reset_q        <= 1'b1;
-    alu_func_q     <= `ALU_NONE;
-    alu_input_a_q  <= 32'b0;
-    alu_input_b_q  <= 32'b0;
-end
+    rd_x_q       <= 5'b0;
 else
 begin
-    reset_q        <= 1'b0;
-
-    alu_func_q     <= alu_func_r;
-    alu_input_a_q  <= alu_input_a_r;
-    alu_input_b_q  <= alu_input_b_r;
-
     if (opcode_valid_i && write_rd_r)
         rd_x_q   <= opcode_rd_idx_i;
     else
         rd_x_q   <= 5'b0;
 end
+
+
+//-------------------------------------------------------------
+// ALU
+//-------------------------------------------------------------
+wire [31:0]  alu_p_w;
+riscv_alu
+u_alu
+(
+    .alu_op_i(alu_func_r),
+    .alu_a_i(alu_input_a_r),
+    .alu_b_i(alu_input_b_r),
+    .alu_p_o(alu_p_w)
+);
+
+//-------------------------------------------------------------
+// Flop ALU output
+//-------------------------------------------------------------
+reg [31:0] result_q;
+always @ (posedge clk_i or posedge rst_i)
+if (rst_i)
+    result_q  <= 32'b0;
+else
+    result_q <= alu_p_w;
+
+assign writeback_value_o  = result_q;
 
 //-------------------------------------------------------------
 // Outputs

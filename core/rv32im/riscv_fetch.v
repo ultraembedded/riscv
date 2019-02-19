@@ -1,15 +1,15 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.9
+//                            V0.9.5
 //                     Ultra-Embedded.com
-//                     Copyright 2014-2018
+//                     Copyright 2014-2019
 //
 //                   admin@ultra-embedded.com
 //
 //                       License: BSD
 //-----------------------------------------------------------------
 //
-// Copyright (c) 2014-2018, Ultra-Embedded.com
+// Copyright (c) 2014-2019, Ultra-Embedded.com
 // All rights reserved.
 // 
 // Redistribution and use in source and binary forms, with or without
@@ -38,6 +38,7 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF 
 // SUCH DAMAGE.
 //-----------------------------------------------------------------
+
 module riscv_fetch
 (
     // Inputs
@@ -51,6 +52,7 @@ module riscv_fetch
     ,input           icache_error_i
     ,input  [ 31:0]  icache_inst_i
     ,input  [ 31:0]  icache_inst_pc_i
+    ,input           fetch_invalidate_i
 
     // Outputs
     ,output          fetch_valid_o
@@ -79,6 +81,7 @@ reg [31:0]  branch_pc_q;
 reg         branch_valid_q;
 
 reg         icache_fetch_q;
+reg         icache_invalidate_q;
 
 reg [63:0]  skid_buffer_q;
 reg         skid_valid_q;
@@ -144,16 +147,25 @@ begin
         icache_fetch_q <= 1'b1;
     else if (icache_valid_i)
         icache_fetch_q <= 1'b0;
-
 end
+
+always @ (posedge clk_i or posedge rst_i)
+if (rst_i)
+    icache_invalidate_q <= 1'b0;
+else if (icache_invalidate_o && !icache_accept_i)
+    icache_invalidate_q <= 1'b1;
+else
+    icache_invalidate_q <= 1'b0;
+
 
 //-------------------------------------------------------------
 // Outputs
 //-------------------------------------------------------------
 assign icache_rd_o         = active_q & !stall_w;
 assign icache_pc_o         = branch_w ? branch_pc_w : fetch_pc_q;
-assign icache_flush_o      = 1'b0;
+assign icache_flush_o      = fetch_invalidate_i | icache_invalidate_q;
 assign icache_invalidate_o = 1'b0;
+
 
 // On fault, insert known invalid opcode into the pipeline
 wire [31:0] instruction_w  = icache_error_i ? `INST_FAULT : icache_inst_i;
@@ -161,7 +173,6 @@ wire [31:0] instruction_w  = icache_error_i ? `INST_FAULT : icache_inst_i;
 assign fetch_valid_o = (icache_valid_i || skid_valid_q) & !branch_w;
 assign fetch_pc_o    = skid_valid_q ? skid_buffer_q[63:32] : icache_inst_pc_i;
 assign fetch_instr_o = skid_valid_q ? skid_buffer_q[31:0]  : instruction_w;
-
 
 
 endmodule
