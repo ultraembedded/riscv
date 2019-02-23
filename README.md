@@ -70,3 +70,7 @@ To run the provided test executable;
 cd top_tcm_axi/tb
 make run
 ````
+
+## Execution Example
+![](doc/core_exec.png)
+
