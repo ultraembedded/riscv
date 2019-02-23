@@ -2,6 +2,7 @@
 #include "testbench.h"
 #include <stdlib.h>
 #include <math.h>
+#include <signal.h>
 
 //--------------------------------------------------------------------
 // Defines
@@ -49,12 +50,30 @@ static void assert_handler(const sc_report& rep, const sc_actions& actions)
     }
 }
 //--------------------------------------------------------------------
-// vl_finish: Handling of verilog $finish
+// exit_override
 //--------------------------------------------------------------------
-void vl_finish (const char* filename, int linenum, const char* hier)
+static void exit_override(void)
 {
     if (tb)
         tb->abort();
+}
+//--------------------------------------------------------------------
+// vl_finish: Handling of verilog $finish
+//--------------------------------------------------------------------
+void vl_finish (const char* filename, int linenum, const char* hier)
+{ 
+    // Jump to exit handler!
+    exit(0);    
+}
+//-----------------------------------------------------------------
+// sigint_handler
+//-----------------------------------------------------------------
+static void sigint_handler(int s)
+{
+    exit_override();
+
+    // Jump to exit handler!
+    exit(1);
 }
 //--------------------------------------------------------------------
 // sc_main
@@ -65,6 +84,11 @@ int sc_main(int argc, char* argv[])
     int seed              = 1;
     int last_argc         = 0;
     const char * vcd_name = "sysc_wave";
+
+    // Env variable seed override
+    char *s = getenv("SEED");
+    if (s && strcmp(s, ""))
+        seed = strtol(s, NULL, 0);
 
     for (int i=1;i<argc;i++)
     {
@@ -90,11 +114,22 @@ int sc_main(int argc, char* argv[])
         }
     }
 
+    // Enable waves override
+    s = getenv("ENABLE_WAVES");
+    if (s && !strcmp(s, "no"))
+        trace = 0;    
+
     sc_report_handler::set_actions("/IEEE_Std_1666/deprecated", SC_DO_NOTHING);
     sc_set_time_resolution(SIM_TIME_RESOLUTION,SIM_TIME_SCALE);
 
     // Register custom assert handler
     sc_report_handler::set_handler(assert_handler);
+
+    // Capture exit
+    atexit(exit_override);
+
+    // Catch SIGINT to restore terminal settings on exit
+    signal(SIGINT, sigint_handler);
 
     // Seed
     srand(seed);

@@ -118,14 +118,37 @@ wire [4:0] wb_mem_rd_w    = writeback_mem_idx_i    & {5{~writeback_mem_squash_i}
 wire [4:0] wb_csr_rd_w    = writeback_csr_idx_i    & {5{~writeback_csr_squash_i}};
 wire [4:0] wb_muldiv_rd_w = writeback_muldiv_idx_i & {5{~writeback_muldiv_squash_i}};
 
-
+//-------------------------------------------------------------
+// Single writeback version
+//-------------------------------------------------------------
 reg [4:0]  wb_rd_r;
 reg [31:0] wb_res_r;
 
 always @ *
 begin
-    wb_rd_r  = wb_exec_rd_w;
-    wb_res_r = writeback_exec_value_i;
+    wb_rd_r  = 5'b0;
+    wb_res_r = 32'b0;
+
+    if (wb_mem_rd_w != 5'b0)
+    begin
+        wb_rd_r  = wb_mem_rd_w;
+        wb_res_r = writeback_mem_value_i;
+    end
+    else if (wb_csr_rd_w != 5'b0)
+    begin
+        wb_rd_r  = wb_csr_rd_w;
+        wb_res_r = writeback_csr_value_i;
+    end
+    else if (wb_muldiv_rd_w != 5'b0)
+    begin
+        wb_rd_r  = wb_muldiv_rd_w;
+        wb_res_r = writeback_muldiv_value_i;
+    end
+    else
+    begin
+        wb_rd_r  = wb_exec_rd_w;
+        wb_res_r = writeback_exec_value_i;
+    end
 
 end
 
@@ -138,19 +161,20 @@ u_regfile
     // Write ports
     .rd0_i(wb_rd_r),
     .rd0_value_i(wb_res_r),
-    .rd1_i(wb_mem_rd_w),
-    .rd1_value_i(writeback_mem_value_i),
-    .rd2_i(wb_csr_rd_w),
-    .rd2_value_i(writeback_csr_value_i),
-    .rd3_i(wb_muldiv_rd_w),
-    .rd3_value_i(writeback_muldiv_value_i),
-
+    .rd1_i(5'b0),
+    .rd1_value_i(32'b0),
+    .rd2_i(5'b0),
+    .rd2_value_i(32'b0),
+    .rd3_i(5'b0),
+    .rd3_value_i(32'b0),    
+    
     // Read ports
     .ra_i(opcode_ra_idx_o),
     .rb_i(opcode_rb_idx_o),
     .ra_value_o(ra_value_w),
     .rb_value_o(rb_value_w)
 );
+
 
 //-------------------------------------------------------------
 // fence.i
@@ -228,23 +252,23 @@ wire sb_alloc_w = (opcode_instr_o[`ENUM_INST_LB]     ||
                    opcode_instr_o[`ENUM_INST_REM]    ||
                    opcode_instr_o[`ENUM_INST_REMU] );
 
-
 always @ *
 begin
     scoreboard_r = scoreboard_q;
 
-    scoreboard_r[writeback_mem_idx_i]    = 1'b0;
-
     // Allocate register in scoreboard
     if (sb_alloc_w && exec_opcode_valid_o && lsu_opcode_valid_o && csr_opcode_valid_o && muldiv_opcode_valid_o)
     begin
-        scoreboard_r[opcode_rd_idx_o] = 1'b1;
+        if (opcode_rd_idx_o != 5'b0)
+            scoreboard_r = 32'hFFFFFFFE;
     end
 
-    // Release register on Load / CSR completion    
-    scoreboard_r[writeback_csr_idx_i]    = 1'b0;
-    scoreboard_r[writeback_muldiv_idx_i] = 1'b0;
+    // Release register on Load / CSR completion
+    if (writeback_csr_idx_i != 5'b0)     scoreboard_r = 32'b0;
+    if (writeback_muldiv_idx_i != 5'b0)  scoreboard_r = 32'b0;
+    if (writeback_mem_idx_i != 5'b0)     scoreboard_r = 32'b0;
 end
+
 
 always @ (posedge clk_i or posedge rst_i)
 if (rst_i)
@@ -434,13 +458,7 @@ endfunction
 function [31:0] get_register; /*verilator public*/
     input [4:0] r;
 begin
-    get_register = u_regfile.get_register(r);
-
-    if (r != 5'b0 && writeback_exec_idx_i == r)
-        get_register = writeback_exec_value_i;
-
-    if (r != 5'b0 && writeback_mem_idx_i == r)
-        get_register = writeback_mem_value_i;
+    get_register = 32'b0;
 end
 endfunction
 //-------------------------------------------------------------
@@ -450,7 +468,6 @@ function set_register; /*verilator public*/
     input [4:0] r;
     input [31:0] value;
 begin
-    u_regfile.set_register(r,value);
 end
 endfunction
 `endif

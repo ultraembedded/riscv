@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.9.5
+//                            V0.9.6
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2019
 //
@@ -53,7 +53,6 @@ module riscv_core
     ,input           mem_i_valid_i
     ,input           mem_i_error_i
     ,input  [ 31:0]  mem_i_inst_i
-    ,input  [ 31:0]  mem_i_inst_pc_i
     ,input           intr_i
     ,input  [ 31:0]  reset_vector_i
     ,input  [ 31:0]  cpu_id_i
@@ -310,7 +309,6 @@ riscv_fetch u_fetch
     ,.icache_valid_i(mem_i_valid_i)
     ,.icache_error_i(mem_i_error_i)
     ,.icache_inst_i(mem_i_inst_i)
-    ,.icache_inst_pc_i(mem_i_inst_pc_i)
     ,.fetch_invalidate_i(fetch_invalidate_w)
 
     // Outputs

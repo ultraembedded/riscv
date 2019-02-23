@@ -101,7 +101,6 @@ wire  [ 31:0]  conv_ram_write_data_w;
 wire           ext_out_flush_w;
 wire  [ 10:0]  ext_out_req_tag_w;
 wire  [ 31:0]  conv_ram_addr_w;
-wire  [ 31:0]  icache_inst_pc_w;
 wire           icache_flush_w;
 wire           conv_ram_rd_w;
 wire           mem_out_resp_accept_w;
@@ -235,7 +234,6 @@ riscv_core u_core
     ,.mem_i_accept_i(icache_accept_w)
     ,.mem_i_valid_i(icache_valid_w)
     ,.mem_i_inst_i(icache_inst_w)
-    ,.mem_i_inst_pc_i(icache_inst_pc_w)
     ,.mem_i_error_i(1'b0)
     ,.intr_i(intr_i)
     ,.reset_vector_i(boot_vector_w)
@@ -291,7 +289,6 @@ mem_tcm u_mem_tcm
     ,.mem_i_accept_o(icache_accept_w)
     ,.mem_i_valid_o(icache_valid_w)
     ,.mem_i_inst_o(icache_inst_w)
-    ,.mem_i_inst_pc_o(icache_inst_pc_w)
     ,.ext_read_data_o(conv_ram_read_data_w)
     ,.ext_accept_o(conv_ram_accept_w)
     ,.mem_out_addr_o(ext_out_addr_w)

@@ -72,7 +72,6 @@ module mem_tcm
     ,output          mem_i_accept_o
     ,output          mem_i_valid_o
     ,output [ 31:0]  mem_i_inst_o
-    ,output [ 31:0]  mem_i_inst_pc_o
     ,output [ 31:0]  ext_read_data_o
     ,output          ext_accept_o
     ,output [ 31:0]  mem_out_addr_o
@@ -127,23 +126,15 @@ assign ext_read_data_o = data_r_w;
 // Instruction Fetch
 //-------------------------------------------------------------
 reg        mem_i_valid_q;
-reg [31:0] mem_i_pc_q;
 
 always @ (posedge clk_i or posedge rst_i)
 if (rst_i)
-begin
     mem_i_valid_q <= 1'b0;
-    mem_i_pc_q    <= 32'b0;
-end
 else
-begin
     mem_i_valid_q <= mem_i_rd_i;
-    mem_i_pc_q    <= mem_i_pc_i;
-end
 
 assign mem_i_accept_o  = 1'b1;
 assign mem_i_valid_o   = mem_i_valid_q;
-assign mem_i_inst_pc_o = mem_i_pc_q;
 
 //-------------------------------------------------------------
 // Data Access / Incoming external access

@@ -1,4 +1,4 @@
-#include <systemc.h>
+#include "testbench_vbase.h"
 
 #include "riscv_main.h"
 #include "riscv.h"
@@ -18,16 +18,9 @@
 //-----------------------------------------------------------------
 // Module
 //-----------------------------------------------------------------
-class testbench: public sc_module, public cosim_cpu_api, public cosim_mem_api
+class testbench: public testbench_vbase, public cosim_cpu_api, public cosim_mem_api
 {
 public:
-    //-----------------------------------------------------------------
-    // Signals
-    //-----------------------------------------------------------------    
-    sc_in <bool>                clk;
-    sc_in <bool>                rst;
-    sc_signal <bool>            rst_cpu_in;
-
     //-----------------------------------------------------------------
     // Instances / Members
     //-----------------------------------------------------------------      
@@ -35,6 +28,10 @@ public:
 
     int                          m_argc;
     char**                       m_argv;
+    //-----------------------------------------------------------------
+    // Signals
+    //-----------------------------------------------------------------    
+    sc_signal <bool>            rst_cpu_in;
 
     sc_signal <axi4_master>      axi_t_in;
     sc_signal <axi4_slave>       axi_t_out;
@@ -44,14 +41,11 @@ public:
 
     sc_signal < bool >           intr_in;
 
-    VerilatedVcdC               *m_verilate_vcd;
-
-    bool                         m_stopped;
 
     //-----------------------------------------------------------------
-    // thread: Main loop for CPU execution
+    // process: Main loop for CPU execution
     //-----------------------------------------------------------------
-    void thread(void) 
+    void process(void) 
     {
         cosim::instance()->attach_cpu("rtl", this);
         cosim::instance()->attach_mem("rtl", this, 0, 0xFFFFFFFF);
@@ -65,7 +59,7 @@ public:
     // Construction
     //-----------------------------------------------------------------
     SC_HAS_PROCESS(testbench);
-    testbench(sc_module_name name): sc_module(name)
+    testbench(sc_module_name name): testbench_vbase(name)
     {
         m_dut = new riscv_tcm_top_rtl("DUT");
         m_dut->clk_in(clk);
@@ -76,39 +70,25 @@ public:
         m_dut->axi_i_out(axi_i_out);
         m_dut->axi_i_in(axi_i_in);
         m_dut->intr_in(intr_in);
-
-        SC_CTHREAD(thread, clk);
-
-        m_stopped = false;
+		
+		verilator_trace_enable("verilator.vcd", m_dut);
     }
-
     //-----------------------------------------------------------------
     // Trace
     //-----------------------------------------------------------------
-    void add_trace(sc_trace_file *vcd, std::string prefix)
+    void add_trace(sc_trace_file * fp, std::string prefix)
     {
-        m_dut->add_trace(vcd, prefix + "DUT/");
+        if (!waves_enabled())
+            return;
 
-        Verilated::traceEverOn(true);
-        VerilatedVcdC *v_vcd = new VerilatedVcdC;
-        m_dut->trace_enable (v_vcd);
-        v_vcd->open ("verilator.vcd");
-        m_verilate_vcd = v_vcd;        
-    }
-    //-----------------------------------------------------------------
-    // abort: Flush VCD trace
-    //-----------------------------------------------------------------
-    void abort(void)
-    {
-        if (m_verilate_vcd)
-        {
-            m_verilate_vcd->flush();
-            m_verilate_vcd->close();
-            m_verilate_vcd = NULL;
-        }
+        // Add signals to trace file
+        #define TRACE_SIGNAL(a) sc_trace(fp,a,#a);
+        TRACE_SIGNAL(clk);
+        TRACE_SIGNAL(rst);
 
-        m_stopped = true;
+        m_dut->add_trace(fp, "");
     }
+
     //-----------------------------------------------------------------
     // create_memory: Create memory region
     //-----------------------------------------------------------------
@@ -153,7 +133,7 @@ public:
     }
 
     // Not supported
-    bool      get_stopped(void) { return m_stopped; } 
+    bool      get_stopped(void) { return false; } 
     bool      get_fault(void)  { return false; }
     void      set_interrupt(int irq)   { }
     void      enable_trace(uint32_t mask) { }

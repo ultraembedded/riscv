@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.9.5
+//                            V0.9.6
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2019
 //
@@ -61,7 +61,6 @@ module riscv_mmu
     ,input           fetch_out_valid_i
     ,input           fetch_out_error_i
     ,input  [ 31:0]  fetch_out_inst_i
-    ,input  [ 31:0]  fetch_out_inst_pc_i
     ,input  [ 31:0]  lsu_in_addr_i
     ,input  [ 31:0]  lsu_in_data_wr_i
     ,input           lsu_in_rd_i
@@ -89,7 +88,6 @@ module riscv_mmu
     ,output          fetch_in_valid_o
     ,output          fetch_in_error_o
     ,output [ 31:0]  fetch_in_inst_o
-    ,output [ 31:0]  fetch_in_inst_pc_o
     ,output          fetch_out_rd_o
     ,output          fetch_out_flush_o
     ,output          fetch_out_invalidate_o
@@ -356,7 +354,6 @@ assign fetch_in_accept_o      = (~vm_enable_w & fetch_out_accept_i) | (vm_enable
 assign fetch_in_valid_o       = fetch_out_valid_i;
 assign fetch_in_error_o       = fetch_out_error_i;
 assign fetch_in_inst_o        = fetch_out_inst_i;
-assign fetch_in_inst_pc_o     = fetch_out_inst_pc_i;
 
 //-----------------------------------------------------------------
 // DMMU TLB

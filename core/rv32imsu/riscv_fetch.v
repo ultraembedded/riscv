@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.9.5
+//                            V0.9.6
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2019
 //
@@ -51,7 +51,6 @@ module riscv_fetch
     ,input           icache_valid_i
     ,input           icache_error_i
     ,input  [ 31:0]  icache_inst_i
-    ,input  [ 31:0]  icache_inst_pc_i
     ,input           mmu_fetch_fault_i
     ,input           fetch_invalidate_i
 
@@ -165,7 +164,6 @@ if (rst_i)
     pc_d_q <= 32'b0;
 else if (icache_rd_o && icache_accept_i)
     pc_d_q <= icache_pc_o;
-
 
 // Page Fault: mmu_fetch_fault_i is combinatorial based on icache_rd_o & icache_pc_o
 // On page fault, the access will be squashed before the cache, so we need to invent

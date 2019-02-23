@@ -54,6 +54,7 @@ public:
     void async_outputs(void);
     void trace_rtl(void);
     void trace_enable(VerilatedVcdC *p);
+    void trace_enable(VerilatedVcdC *p, sc_core::sc_time start_time);
 
     //-------------------------------------------------------------
     // Signals
@@ -112,7 +113,9 @@ private:
 public:
     Vriscv_tcm_top *m_rtl;
 #if VM_TRACE
-    VerilatedVcdC  *m_vcd;
+    VerilatedVcdC  * m_vcd;
+    bool             m_delay_waves;
+    sc_core::sc_time m_waves_start;
 #endif 
 };
 

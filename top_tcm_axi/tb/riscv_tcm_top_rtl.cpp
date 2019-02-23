@@ -90,6 +90,8 @@ riscv_tcm_top_rtl::riscv_tcm_top_rtl(sc_module_name name): sc_module(name)
     sensitive << m_axi_t_rlast_out;
 
 #if VM_TRACE
+    m_vcd         = NULL;
+    m_delay_waves = false;
     SC_METHOD(trace_rtl);
     sensitive << clk_in;
 #endif
@@ -100,7 +102,15 @@ riscv_tcm_top_rtl::riscv_tcm_top_rtl(sc_module_name name): sc_module(name)
 void riscv_tcm_top_rtl::trace_rtl(void)
 {
 #if VM_TRACE
-    if (m_vcd)
+    if (m_delay_waves)
+    {
+        if (sc_time_stamp() > m_waves_start)
+        {
+            cout << "WAVES: Delayed start reached - " << sc_time_stamp() << endl;
+            m_delay_waves = false;
+        }
+    }
+    else if (m_vcd)
         m_vcd->dump((int)(sc_time_stamp().to_double()));
 #endif
 }
@@ -111,6 +121,15 @@ void riscv_tcm_top_rtl::trace_enable(VerilatedVcdC * p)
 {
 #if VM_TRACE
     m_vcd = p;
+    m_rtl->trace (m_vcd, 99);
+#endif
+}
+void riscv_tcm_top_rtl::trace_enable(VerilatedVcdC *p, sc_core::sc_time start_time)
+{
+#if VM_TRACE
+    m_vcd = p;
+    m_delay_waves = true;
+    m_waves_start = start_time;
     m_rtl->trace (m_vcd, 99);
 #endif
 }

@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.9.5
+//                            V0.9.6
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2019
 //
@@ -51,7 +51,6 @@ module riscv_fetch
     ,input           icache_valid_i
     ,input           icache_error_i
     ,input  [ 31:0]  icache_inst_i
-    ,input  [ 31:0]  icache_inst_pc_i
     ,input           fetch_invalidate_i
 
     // Outputs
@@ -157,11 +156,19 @@ else if (icache_invalidate_o && !icache_accept_i)
 else
     icache_invalidate_q <= 1'b0;
 
+reg [31:0] pc_d_q;
+
+always @ (posedge clk_i or posedge rst_i)
+if (rst_i)
+    pc_d_q <= 32'b0;
+else if (icache_rd_o && icache_accept_i)
+    pc_d_q <= icache_pc_o;
+
 
 //-------------------------------------------------------------
 // Outputs
 //-------------------------------------------------------------
-assign icache_rd_o         = active_q & !stall_w;
+assign icache_rd_o         = active_q & fetch_accept_i & !icache_busy_w;
 assign icache_pc_o         = branch_w ? branch_pc_w : fetch_pc_q;
 assign icache_flush_o      = fetch_invalidate_i | icache_invalidate_q;
 assign icache_invalidate_o = 1'b0;
@@ -171,7 +178,7 @@ assign icache_invalidate_o = 1'b0;
 wire [31:0] instruction_w  = icache_error_i ? `INST_FAULT : icache_inst_i;
 
 assign fetch_valid_o = (icache_valid_i || skid_valid_q) & !branch_w;
-assign fetch_pc_o    = skid_valid_q ? skid_buffer_q[63:32] : icache_inst_pc_i;
+assign fetch_pc_o    = skid_valid_q ? skid_buffer_q[63:32] : pc_d_q;
 assign fetch_instr_o = skid_valid_q ? skid_buffer_q[31:0]  : instruction_w;
 
 

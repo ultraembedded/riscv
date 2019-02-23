@@ -51,7 +51,7 @@ $(OBJ_DIR) $(LIB_DIR):
 $(foreach src,$(SRC_LIST),$(eval $(call template_c,$(src))))
 
 $(LIB_DIR)$(LIBNAME): $(OBJ) | $(LIB_DIR) 
-	g++ -shared -o $(LIB_DIR)$(LIBNAME) -Wl,--whole-archive $(LIB_OPT) $(OBJ) -Wl,--no-whole-archive
+	g++ -shared -o $(LIB_DIR)$(LIBNAME) $(LIB_OPT) $(OBJ)
 
 clean:
 	rm -rf $(LIB_DIR) $(OBJ_DIR)

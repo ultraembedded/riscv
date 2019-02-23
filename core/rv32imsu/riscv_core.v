@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.9.5
+//                            V0.9.6
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2019
 //
@@ -53,7 +53,6 @@ module riscv_core
     ,input           mem_i_valid_i
     ,input           mem_i_error_i
     ,input  [ 31:0]  mem_i_inst_i
-    ,input  [ 31:0]  mem_i_inst_pc_i
     ,input           intr_i
     ,input  [ 31:0]  reset_vector_i
     ,input  [ 31:0]  cpu_id_i
@@ -100,7 +99,6 @@ wire  [ 31:0]  writeback_muldiv_value_w;
 wire  [  3:0]  mmu_lsu_wr_w;
 wire           branch_request_w;
 wire           mmu_ifetch_flush_w;
-wire  [ 31:0]  mmu_ifetch_inst_pc_w;
 wire           fetch_invalidate_w;
 wire           exec_stall_w;
 wire  [ 31:0]  mmu_lsu_data_wr_w;
@@ -224,7 +222,6 @@ riscv_mmu u_mmu
     ,.fetch_out_valid_i(mem_i_valid_i)
     ,.fetch_out_error_i(mem_i_error_i)
     ,.fetch_out_inst_i(mem_i_inst_i)
-    ,.fetch_out_inst_pc_i(mem_i_inst_pc_i)
     ,.lsu_in_addr_i(mmu_lsu_addr_w)
     ,.lsu_in_data_wr_i(mmu_lsu_data_wr_w)
     ,.lsu_in_rd_i(mmu_lsu_rd_w)
@@ -252,7 +249,6 @@ riscv_mmu u_mmu
     ,.fetch_in_valid_o(mmu_ifetch_valid_w)
     ,.fetch_in_error_o(mmu_ifetch_error_w)
     ,.fetch_in_inst_o(mmu_ifetch_inst_w)
-    ,.fetch_in_inst_pc_o(mmu_ifetch_inst_pc_w)
     ,.fetch_out_rd_o(mem_i_rd_o)
     ,.fetch_out_flush_o(mem_i_flush_o)
     ,.fetch_out_invalidate_o(mem_i_invalidate_o)
@@ -498,7 +494,6 @@ riscv_fetch u_fetch
     ,.icache_valid_i(mmu_ifetch_valid_w)
     ,.icache_error_i(mmu_ifetch_error_w)
     ,.icache_inst_i(mmu_ifetch_inst_w)
-    ,.icache_inst_pc_i(mmu_ifetch_inst_pc_w)
     ,.mmu_fetch_fault_i(mmu_fetch_fault_w)
     ,.fetch_invalidate_i(fetch_invalidate_w)
 
