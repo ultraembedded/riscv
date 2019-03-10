@@ -134,13 +134,15 @@ assign exc_src_w[`MCAUSE_PAGE_FAULT_LOAD + 1] = 1'b0;
 assign exc_src_w[`MCAUSE_PAGE_FAULT_STORE]    = fault_page_store_i;
 assign exc_src_w[31:16]                       = 16'b0;
 
-`define EXC_SRC_NO_ECALL_EBREAK   (~(`MCAUSE_ECALL_U | `MCAUSE_ECALL_S | `MCAUSE_ECALL_H | `MCAUSE_ECALL_M | `MCAUSE_BREAKPOINT))
+`define EXC_SRC_NO_ECALL_EBREAK   (~((1 << `MCAUSE_ECALL_U) |                                      (1 << `MCAUSE_ECALL_S) |                                      (1 << `MCAUSE_ECALL_H) |                                      (1 << `MCAUSE_ECALL_M) |                                      (1 << `MCAUSE_BREAKPOINT)))
+
+`define EXC_SRC_M_STAGE           ( ((1 << `MCAUSE_MISALIGNED_LOAD)  |                                      (1 << `MCAUSE_MISALIGNED_STORE) |                                      (1 << `MCAUSE_PAGE_FAULT_LOAD)  |                                      (1 << `MCAUSE_PAGE_FAULT_STORE)))
 
 wire mmu_exception_w = (opcode_valid_i & opcode_instr_i[`ENUM_INST_PAGE_FAULT]) | fault_page_load_i | fault_page_store_i;
 
 // FAULT_LOAD and FAULT_STORE are imprecise, but would also be M stage or later
-// MMU exceptions are also M stage.
-wire exception_m_w   = exc_src_w[`MCAUSE_MISALIGNED_LOAD] || exc_src_w[`MCAUSE_MISALIGNED_STORE];
+// MMU data exceptions are also M stage.
+wire exception_m_w   = |(exc_src_w & `EXC_SRC_M_STAGE);
 
 //-----------------------------------------------------------------
 // CSR handling
@@ -293,7 +295,10 @@ begin
     end
 
     // Exception/interrupt delegated to supervisor mode
-    exception_s_r = |(exc_src_w    & csr_medeleg_q & `EXC_SRC_NO_ECALL_EBREAK);
+    if (exception_m_w)
+        exception_s_r = |(exc_src_w & csr_medeleg_q & `EXC_SRC_M_STAGE);
+    else
+        exception_s_r = |(exc_src_w & csr_medeleg_q & `EXC_SRC_NO_ECALL_EBREAK);
     interrupt_s_r = |(irq_masked_r & csr_mideleg_q);
 
     // Fetch/Load/Store fault

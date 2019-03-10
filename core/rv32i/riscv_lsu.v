@@ -242,9 +242,7 @@ begin
 
     mem_invalidate_q <= opcode_valid_i & dcache_invalidate_w;
     mem_flush_q      <= opcode_valid_i & dcache_flush_w;
-
-    // Mask address bits
-    mem_addr_q <= {mem_addr_r[31:2], 2'b0};
+    mem_addr_q       <= mem_addr_r;
 end
 
 assign mem_addr_o       = mem_addr_q;
