@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.9.6
+//                            V0.9.7
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2019
 //
@@ -125,6 +125,10 @@ assign exc_src_w[31:16]                       = 16'b0;
 
 `define EXC_SRC_NO_ECALL_EBREAK   (~(`MCAUSE_ECALL_U | `MCAUSE_ECALL_S | `MCAUSE_ECALL_H | `MCAUSE_ECALL_M | `MCAUSE_BREAKPOINT))
 
+
+// FAULT_LOAD and FAULT_STORE are imprecise, but would also be M stage or later
+// MMU exceptions are also M stage.
+wire exception_m_w   = exc_src_w[`MCAUSE_MISALIGNED_LOAD] || exc_src_w[`MCAUSE_MISALIGNED_STORE];
 
 //-----------------------------------------------------------------
 // CSR handling
@@ -262,9 +266,12 @@ begin
             // Raise priviledge to machine level
             csr_mpriv_r          = `PRIV_MACHINE;
 
+            // LSU fault - PC has already advanced
+            if (exception_m_w)
+                csr_mepc_r   = pc_m_q;
             // Previous instruction was EBREAK, ERET, ECALL
             // Target inst not executed, so return here later
-            if (branch_csr_request_o)
+            else if (branch_csr_request_o)
                 csr_mepc_r   = branch_csr_pc_o;
             // Taking interrupt instead of executing instruction handled by this functional unit?
             // Target inst not executed, so return here later
@@ -280,7 +287,11 @@ begin
             else
                 csr_mepc_r   = opcode_pc_i;
 
-            if (exc_src_w[`MCAUSE_ILLEGAL_INSTRUCTION])
+            if (exc_src_w[`MCAUSE_MISALIGNED_LOAD])
+                csr_mcause_r = `MCAUSE_MISALIGNED_LOAD;
+            else if (exc_src_w[`MCAUSE_MISALIGNED_STORE])
+                csr_mcause_r = `MCAUSE_MISALIGNED_STORE;
+            else if (exc_src_w[`MCAUSE_ILLEGAL_INSTRUCTION])
                 csr_mcause_r = `MCAUSE_ILLEGAL_INSTRUCTION;
             else if (exc_src_w[`MCAUSE_FAULT_FETCH])
                 csr_mcause_r = `MCAUSE_FAULT_FETCH;
@@ -288,10 +299,6 @@ begin
                 csr_mcause_r = `MCAUSE_FAULT_LOAD;
             else if (exc_src_w[`MCAUSE_FAULT_STORE])
                 csr_mcause_r = `MCAUSE_FAULT_STORE;
-            else if (exc_src_w[`MCAUSE_MISALIGNED_LOAD])
-                csr_mcause_r = `MCAUSE_MISALIGNED_LOAD;
-            else if (exc_src_w[`MCAUSE_MISALIGNED_STORE])
-                csr_mcause_r = `MCAUSE_MISALIGNED_STORE;
     end
     // We will be taking an interrupt, record the reason
     else if (take_intr_r)
@@ -647,6 +654,7 @@ end
 
 assign branch_csr_request_o = branch_q;
 assign branch_csr_pc_o      = branch_target_q;
+
 
 
 

@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.9.6
+//                            V0.9.7
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2019
 //
@@ -435,12 +435,6 @@ assign fetch_branch_o    = branch_request_i | branch_csr_request_i;
 assign fetch_branch_pc_o = branch_csr_request_i ? branch_csr_pc_i : branch_pc_i;
 assign fetch_accept_o    = branch_csr_request_i || (!exec_stall_i && !stall_scoreboard_r && !lsu_stall_i && !csr_stall_i && !muldiv_stall_i);
 
-//-------------------------------------------------------------
-// Faults
-//-------------------------------------------------------------
-// Bad opcode detection...
-wire fault_invalid_inst_w = opcode_valid_r ? ~(|opcode_instr_o[`ENUM_INST_PAGE_FAULT-1:0]) : 1'b0;
-
 
 //-------------------------------------------------------------
 // get_reg_valid: Register contents valid
@@ -471,6 +465,7 @@ begin
 end
 endfunction
 `endif
+
 
 //-----------------------------------------------------------------
 // get_regname_str: Convert register number to string
