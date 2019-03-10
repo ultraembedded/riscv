@@ -134,14 +134,10 @@ assign exc_src_w[`MCAUSE_PAGE_FAULT_LOAD + 1] = 1'b0;
 assign exc_src_w[`MCAUSE_PAGE_FAULT_STORE]    = fault_page_store_i;
 assign exc_src_w[31:16]                       = 16'b0;
 
-`define EXC_SRC_NO_ECALL_EBREAK   (~((1 << `MCAUSE_ECALL_U) |                                      (1 << `MCAUSE_ECALL_S) |                                      (1 << `MCAUSE_ECALL_H) |                                      (1 << `MCAUSE_ECALL_M) |                                      (1 << `MCAUSE_BREAKPOINT)))
+`define EXC_SRC_NO_ECALL_EBREAK   (~((1 << `MCAUSE_ECALL_U) | (1 << `MCAUSE_ECALL_S) | (1 << `MCAUSE_ECALL_H) | (1 << `MCAUSE_ECALL_M) | (1 << `MCAUSE_BREAKPOINT)))
+`define EXC_SRC_M_STAGE           ( ((1 << `MCAUSE_MISALIGNED_LOAD) | (1 << `MCAUSE_MISALIGNED_STORE) | (1 << `MCAUSE_PAGE_FAULT_LOAD) | (1 << `MCAUSE_PAGE_FAULT_STORE)))
 
-`define EXC_SRC_M_STAGE           ( ((1 << `MCAUSE_MISALIGNED_LOAD)  |                                      (1 << `MCAUSE_MISALIGNED_STORE) |                                      (1 << `MCAUSE_PAGE_FAULT_LOAD)  |                                      (1 << `MCAUSE_PAGE_FAULT_STORE)))
-
-wire mmu_exception_w = (opcode_valid_i & opcode_instr_i[`ENUM_INST_PAGE_FAULT]) | fault_page_load_i | fault_page_store_i;
-
-// FAULT_LOAD and FAULT_STORE are imprecise, but would also be M stage or later
-// MMU data exceptions are also M stage.
+// FAULT_LOAD and FAULT_STORE are imprecise, but would also be M stage or later.
 wire exception_m_w   = |(exc_src_w & `EXC_SRC_M_STAGE);
 
 //-----------------------------------------------------------------
@@ -305,51 +301,14 @@ begin
     if (exc_src_w[`MCAUSE_FAULT_FETCH]     ||
         exc_src_w[`MCAUSE_FAULT_LOAD]      ||
         exc_src_w[`MCAUSE_FAULT_STORE]     ||
+        exc_src_w[`MCAUSE_PAGE_FAULT_LOAD] ||
+        exc_src_w[`MCAUSE_PAGE_FAULT_STORE]||
+        exc_src_w[`MCAUSE_PAGE_FAULT_INST] ||
         exc_src_w[`MCAUSE_MISALIGNED_LOAD] || 
         exc_src_w[`MCAUSE_MISALIGNED_STORE]||
         exc_src_w[`MCAUSE_ILLEGAL_INSTRUCTION])
         take_exception_r = 1'b1;
 
-    // MMU page fault
-    if (mmu_exception_w)
-    begin
-        // MMU exception not handling any interrupt source
-        take_intr_r          = 1'b0;
-        take_exception_r     = 1'b0;
-
-        // Save interrupt / supervisor state
-        csr_sr_r[`SR_SPIE_R] = csr_sr_q[`SR_SIE_R];
-        csr_sr_r[`SR_SPP_R]  = (csr_mpriv_q == `PRIV_SUPER);
-
-        // Disable interrupts and enter supervisor mode
-        csr_sr_r[`SR_SIE_R]  = 1'b0;
-
-        // Raise priviledge to supervisor level
-        csr_mpriv_r          = `PRIV_SUPER;
-
-        // Capture MMU fault address
-        if (fault_page_load_i || fault_page_store_i)
-        begin
-            // Previous instruction was a load or store
-            csr_sepc_r       = pc_m_q;
-            csr_stval_r      = fault_addr_i;
-        end
-        // Instruction page fault
-        else
-        begin
-            csr_stval_r      = opcode_pc_i;
-            csr_sepc_r       = opcode_pc_i;
-        end
-
-        // Exception source (priority encoded)
-        if (exc_src_w[`MCAUSE_PAGE_FAULT_LOAD])
-            csr_scause_r     = `MCAUSE_PAGE_FAULT_LOAD;
-        else if (exc_src_w[`MCAUSE_PAGE_FAULT_STORE])
-            csr_scause_r     = `MCAUSE_PAGE_FAULT_STORE;
-        else
-            csr_scause_r     = `MCAUSE_PAGE_FAULT_INST;
-    end
-    else
     // Exceptions take priority over interrupts
     if (take_exception_r)
     begin
@@ -372,6 +331,9 @@ begin
             // LSU fault - PC has already advanced
             if (exception_m_w)
                 csr_sepc_r       = pc_m_q;
+            // Instruction page fault
+            else if (exc_src_w[`MCAUSE_PAGE_FAULT_INST])
+                csr_sepc_r       = opcode_pc_i;
             // Previous instruction was EBREAK, ERET, ECALL
             // Target inst not executed, so return here later
             else if (branch_csr_request_o)
@@ -388,13 +350,20 @@ begin
                 csr_sepc_r   = opcode_pc_i + 32'd4;
             // Valid instruction not ready, re-run it later
             else
-                csr_sepc_r   = opcode_pc_i;
+                csr_sepc_r   = opcode_pc_i;       
 
             // M-stage take priority
             if (exc_src_w[`MCAUSE_MISALIGNED_LOAD])
                 csr_scause_r = `MCAUSE_MISALIGNED_LOAD;
             else if (exc_src_w[`MCAUSE_MISALIGNED_STORE])
                 csr_scause_r = `MCAUSE_MISALIGNED_STORE;
+            else if (exc_src_w[`MCAUSE_PAGE_FAULT_LOAD])
+                csr_scause_r = `MCAUSE_PAGE_FAULT_LOAD;
+            else if (exc_src_w[`MCAUSE_PAGE_FAULT_STORE])
+                csr_scause_r = `MCAUSE_PAGE_FAULT_STORE;
+            // Ex-Stage
+            else if (exc_src_w[`MCAUSE_PAGE_FAULT_INST])
+                csr_scause_r = `MCAUSE_PAGE_FAULT_INST;
             else if (exc_src_w[`MCAUSE_ILLEGAL_INSTRUCTION])
                 csr_scause_r = `MCAUSE_ILLEGAL_INSTRUCTION;
             else if (exc_src_w[`MCAUSE_FAULT_FETCH])
@@ -404,8 +373,12 @@ begin
             else if (exc_src_w[`MCAUSE_FAULT_STORE])
                 csr_scause_r = `MCAUSE_FAULT_STORE;
 
-            if (exc_src_w[`MCAUSE_MISALIGNED_LOAD] || exc_src_w[`MCAUSE_MISALIGNED_STORE])
+            // Memory fault
+            if (exception_m_w)
                 csr_stval_r = fault_addr_i;
+            // Instruction page fault
+            else if (exc_src_w[`MCAUSE_PAGE_FAULT_INST])
+                csr_stval_r = opcode_pc_i;
             // Not set...
             else
                 csr_stval_r = 32'b0;
@@ -425,6 +398,9 @@ begin
             // LSU fault - PC has already advanced
             if (exception_m_w)
                 csr_mepc_r   = pc_m_q;
+            // Instruction page fault
+            else if (exc_src_w[`MCAUSE_PAGE_FAULT_INST])
+                csr_mepc_r   = opcode_pc_i;
             // Previous instruction was EBREAK, ERET, ECALL
             // Target inst not executed, so return here later
             else if (branch_csr_request_o)
@@ -443,10 +419,18 @@ begin
             else
                 csr_mepc_r   = opcode_pc_i;
 
+            // M-stage take priority
             if (exc_src_w[`MCAUSE_MISALIGNED_LOAD])
                 csr_mcause_r = `MCAUSE_MISALIGNED_LOAD;
             else if (exc_src_w[`MCAUSE_MISALIGNED_STORE])
                 csr_mcause_r = `MCAUSE_MISALIGNED_STORE;
+            else if (exc_src_w[`MCAUSE_PAGE_FAULT_LOAD])
+                csr_mcause_r = `MCAUSE_PAGE_FAULT_LOAD;
+            else if (exc_src_w[`MCAUSE_PAGE_FAULT_STORE])
+                csr_mcause_r = `MCAUSE_PAGE_FAULT_STORE;
+            // Ex-Stage
+            else if (exc_src_w[`MCAUSE_PAGE_FAULT_INST])
+                csr_mcause_r = `MCAUSE_PAGE_FAULT_INST;
             else if (exc_src_w[`MCAUSE_ILLEGAL_INSTRUCTION])
                 csr_mcause_r = `MCAUSE_ILLEGAL_INSTRUCTION;
             else if (exc_src_w[`MCAUSE_FAULT_FETCH])
@@ -984,7 +968,7 @@ begin
 
     // Scoreboard will have been allocated so de-allocate if an allocated
     // instruction was aborted
-    writeback_squash_q <= (valid_unit_inst_w & (take_exception_r | take_intr_r)) | fault_page_load_i | fault_misaligned_load_i;
+    writeback_squash_q <= (valid_unit_inst_w & ((~exception_m_w & take_exception_r) | take_intr_r)) | fault_page_load_i | fault_misaligned_load_i;
 end
 
 assign writeback_idx_o    = {5{writeback_en_q | writeback_squash_q}} & writeback_idx_q;
@@ -1005,12 +989,6 @@ begin
     branch_r        = 1'b0;
     branch_target_r = 32'b0;
 
-    if (mmu_exception_w)
-    begin
-        branch_r        = 1'b1;
-        branch_target_r = csr_stvec_q;
-    end
-    else
     if (take_exception_r)
     begin
         branch_r        = 1'b1;
