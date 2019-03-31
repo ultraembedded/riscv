@@ -627,7 +627,8 @@ begin
             else if (clr_r)
                 csr_mie_r = csr_mie_r & ~data_r;
         end
-        `CSR_MCYCLE:
+        `CSR_MCYCLE,
+        `CSR_MTIME:
         begin
             result_r = csr_mcycle_q;
         end
