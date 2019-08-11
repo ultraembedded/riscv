@@ -2,7 +2,7 @@
 
 Github: http://github.com/ultraembedded/riscv
 
-A 32-bit RISC-V core written in Verilog and an instruction set simulator supporting RV32IM.
+A 32-bit RISC-V core written in Verilog and an instruction set simulator supporting RV32IM.  
 This core has been tested against a co-simulation model, exercised on FPGA, and is capable of booting a modified version of the Linux kernel.
 
 ## Overview
