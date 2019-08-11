@@ -95,20 +95,24 @@ begin
     case (axtype)
 `ifdef SUPPORT_FIXED_BURST
     2'd0: // AXI4_BURST_FIXED
+    begin
         calculate_addr_next = addr;
+    end
 `endif
 `ifdef SUPPORT_WRAP_BURST
     2'd2: // AXI4_BURST_WRAP
+    begin
         case (axlen)
-        8'd0:      mask = 8'h03;
-        8'd1:      mask = 8'h07;
-        8'd3:      mask = 8'h0F;
-        8'd7:      mask = 8'h1F;
-        8'd15:     mask = 8'h3F;
-        default:   mask = 8'h3F;
+        8'd0:      mask = 32'h03;
+        8'd1:      mask = 32'h07;
+        8'd3:      mask = 32'h0F;
+        8'd7:      mask = 32'h1F;
+        8'd15:     mask = 32'h3F;
+        default:   mask = 32'h3F;
         endcase
 
         calculate_addr_next = (addr & ~mask) | ((addr + 4) & mask);
+    end
 `endif
     default: // AXI4_BURST_INCR
         calculate_addr_next = addr + 4;
