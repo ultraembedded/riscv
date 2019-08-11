@@ -2,8 +2,8 @@
 
 Github: http://github.com/ultraembedded/riscv
 
-A simple RISC-V core written in Verilog and an instruction set simulator supporting RV32IM.
-This core has been tested against a co-simulation model, and exercised on FPGA.
+A 32-bit RISC-V core written in Verilog and an instruction set simulator supporting RV32IM.
+This core has been tested against a co-simulation model, exercised on FPGA, and is capable of booting a modified version of the Linux kernel.
 
 ## Overview
 ![](doc/overview.png)
@@ -17,13 +17,21 @@ This core has been tested against a co-simulation model, and exercised on FPGA.
 | core/rv32im         | RISC-V pipelined RV32IM CPU core (Verilog)          |
 | core/rv32imsu       | RISC-V pipelined RV32IM with supervisor and MMU     |
 | isa_sim             | Instruction set simulator (C)                       |
-| top_tcm_axi/src_v   | Core instance with 64KB DP-RAM & AXI Interfaces     |
+| top_tcm_axi/src_v   | Example instance with 64KB DP-RAM & AXI Interfaces  |
 | top_tcm_axi/tb      | System-C testbench for the core                     |
 
-## Features
+## Features: Core
+
+The core (riscv_core) contains;
+* RV32I, RV32IM, or RV32IM+Supervisor/User Mode/MMU support depending on core variant.
+* 5-stage in-order, single issue.
+* Modified Harvard architecture.
+* Custom bus interfaces which can be connected directly to either RAM or Instruction / Data cache.
+
+## Features: Example Core Instance
 
 The top (riscv_tcm_top) contains;
-* RISC-V core (RV32IM instructions supported).
+* Instances one of the above cores, adding RAM and standard bus interfaces.
 * 64KB dual ported RAM for (I/D code and data).
 * AXI4 slave port for loading the RAM, DMA access, etc (including support for burst access).
 * AXI4-Lite master port for CPU access to peripherals.
