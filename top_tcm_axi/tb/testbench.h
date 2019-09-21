@@ -39,7 +39,7 @@ public:
     sc_signal <axi4_lite_master> axi_i_out;
     sc_signal <axi4_lite_slave>  axi_i_in;
 
-    sc_signal < bool >           intr_in;
+    sc_signal < sc_uint <32> >   intr_in;
 
 
     //-----------------------------------------------------------------
@@ -106,14 +106,14 @@ public:
     //-----------------------------------------------------------------
     void write(uint32_t addr, uint8_t data)
     {
-        m_dut->m_rtl->v->u_mem_tcm->write(addr, data);
+        m_dut->m_rtl->__VlSymsp->TOP__v__u_tcm.write(addr, data);
     }
     //-----------------------------------------------------------------
     // write: Read byte from memory
     //-----------------------------------------------------------------
     uint8_t read(uint32_t addr)
     {
-        return m_dut->m_rtl->v->u_mem_tcm->read(addr);
+        return m_dut->m_rtl->__VlSymsp->TOP__v__u_tcm.read(addr);
     }
     //-----------------------------------------------------------------
     // step: Execute 1 clock cycle

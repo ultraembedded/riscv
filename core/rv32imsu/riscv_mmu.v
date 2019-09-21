@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.9.7
+//                            V0.9.8
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2019
 //
@@ -68,6 +68,7 @@ module riscv_mmu
     ,input           lsu_in_cacheable_i
     ,input  [ 10:0]  lsu_in_req_tag_i
     ,input           lsu_in_invalidate_i
+    ,input           lsu_in_writeback_i
     ,input           lsu_in_flush_i
     ,input  [ 31:0]  lsu_out_data_rd_i
     ,input           lsu_out_accept_i
@@ -83,6 +84,7 @@ module riscv_mmu
     ,output          outport_cacheable_o
     ,output [ 10:0]  outport_req_tag_o
     ,output          outport_invalidate_o
+    ,output          outport_writeback_o
     ,output          outport_flush_o
     ,output          fetch_in_accept_o
     ,output          fetch_in_valid_o
@@ -106,6 +108,7 @@ module riscv_mmu
     ,output          lsu_out_cacheable_o
     ,output [ 10:0]  lsu_out_req_tag_o
     ,output          lsu_out_invalidate_o
+    ,output          lsu_out_writeback_o
     ,output          lsu_out_flush_o
     ,output          load_fault_o
     ,output          store_fault_o
@@ -441,6 +444,7 @@ assign lsu_out_addr_o       = vm_enable_w ? {dtlb_entry_q[31:12], lsu_addr_w[11:
 assign lsu_out_data_wr_o    = lsu_in_data_wr_i;
 
 assign lsu_out_invalidate_o = lsu_in_invalidate_i;
+assign lsu_out_writeback_o  = lsu_in_writeback_i;
 assign lsu_out_cacheable_o  = lsu_in_cacheable_i;
 assign lsu_out_req_tag_o    = lsu_in_req_tag_i;
 assign lsu_out_flush_o      = lsu_in_flush_i;
@@ -474,6 +478,7 @@ assign outport_wr_o         = 4'b0;
 assign outport_cacheable_o  = 1'b1; // TODO: Really??
 assign outport_req_tag_o    = 11'b0;
 assign outport_invalidate_o = 1'b0;
+assign outport_writeback_o  = 1'b0;
 assign outport_flush_o      = 1'b0;
 
 

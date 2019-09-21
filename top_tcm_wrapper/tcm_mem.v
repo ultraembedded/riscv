@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Top
-//                            V0.5
+//                            V0.6
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2019
 //
@@ -58,6 +58,7 @@ module tcm_mem
     ,input           mem_d_cacheable_i
     ,input  [ 10:0]  mem_d_req_tag_i
     ,input           mem_d_invalidate_i
+    ,input           mem_d_writeback_i
     ,input           mem_d_flush_i
     ,input           axi_awvalid_i
     ,input  [ 31:0]  axi_awaddr_i
@@ -231,7 +232,7 @@ begin
     mem_d_ack_q    <= 1'b0;
     mem_d_tag_q    <= 11'b0;
 end
-else if ((mem_d_rd_i || mem_d_wr_i != 4'b0) && mem_d_accept_o)
+else if ((mem_d_rd_i || mem_d_wr_i != 4'b0 || mem_d_flush_i || mem_d_invalidate_i || mem_d_writeback_i) && mem_d_accept_o)
 begin
     mem_d_ack_q    <= 1'b1;
     mem_d_tag_q    <= mem_d_req_tag_i;

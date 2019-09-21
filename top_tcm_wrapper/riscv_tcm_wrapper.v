@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Top
-//                            V0.5
+//                            V0.6
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2019
 //
@@ -49,6 +49,9 @@ module riscv_tcm_wrapper
 #(
      parameter BOOT_VECTOR      = 0
     ,parameter CORE_ID          = 0
+    ,parameter TCM_MEM_BASE     = 0
+    ,parameter MEM_CACHE_ADDR_MIN = 0
+    ,parameter MEM_CACHE_ADDR_MAX = 32'hffffffff
 )
 //-----------------------------------------------------------------
 // Ports
@@ -141,6 +144,7 @@ wire           dport_axi_error_w;
 wire           dport_tcm_ack_w;
 wire           dport_tcm_rd_w;
 wire  [ 10:0]  dport_tcm_resp_tag_w;
+wire           dport_writeback_w;
 wire  [ 31:0]  cpu_id_w = CORE_ID;
 wire           dport_rd_w;
 wire           dport_axi_ack_w;
@@ -156,12 +160,14 @@ wire  [ 31:0]  dport_axi_addr_w;
 wire           dport_error_w;
 wire           dport_tcm_accept_w;
 wire           ifetch_invalidate_w;
+wire           dport_axi_writeback_w;
 wire  [  3:0]  dport_wr_w;
 wire           ifetch_valid_w;
 wire  [ 31:0]  dport_axi_data_wr_w;
 wire  [ 10:0]  dport_req_tag_w;
 wire  [ 31:0]  ifetch_inst_w;
 wire           dport_axi_cacheable_w;
+wire           dport_tcm_writeback_w;
 wire  [  3:0]  dport_axi_wr_w;
 wire           dport_axi_flush_w;
 wire           dport_tcm_error_w;
@@ -169,6 +175,10 @@ wire           dport_accept_w;
 
 
 riscv_core
+#(
+     .MEM_CACHE_ADDR_MIN(MEM_CACHE_ADDR_MIN)
+    ,.MEM_CACHE_ADDR_MAX(MEM_CACHE_ADDR_MAX)
+)
 u_core
 (
     // Inputs
@@ -195,6 +205,7 @@ u_core
     ,.mem_d_cacheable_o(dport_cacheable_w)
     ,.mem_d_req_tag_o(dport_req_tag_w)
     ,.mem_d_invalidate_o(dport_invalidate_w)
+    ,.mem_d_writeback_o(dport_writeback_w)
     ,.mem_d_flush_o(dport_flush_w)
     ,.mem_i_rd_o(ifetch_rd_w)
     ,.mem_i_flush_o(ifetch_flush_w)
@@ -204,6 +215,9 @@ u_core
 
 
 dport_mux
+#(
+     .TCM_MEM_BASE(TCM_MEM_BASE)
+)
 u_dmux
 (
     // Inputs
@@ -216,6 +230,7 @@ u_dmux
     ,.mem_cacheable_i(dport_cacheable_w)
     ,.mem_req_tag_i(dport_req_tag_w)
     ,.mem_invalidate_i(dport_invalidate_w)
+    ,.mem_writeback_i(dport_writeback_w)
     ,.mem_flush_i(dport_flush_w)
     ,.mem_tcm_data_rd_i(dport_tcm_data_rd_w)
     ,.mem_tcm_accept_i(dport_tcm_accept_w)
@@ -241,6 +256,7 @@ u_dmux
     ,.mem_tcm_cacheable_o(dport_tcm_cacheable_w)
     ,.mem_tcm_req_tag_o(dport_tcm_req_tag_w)
     ,.mem_tcm_invalidate_o(dport_tcm_invalidate_w)
+    ,.mem_tcm_writeback_o(dport_tcm_writeback_w)
     ,.mem_tcm_flush_o(dport_tcm_flush_w)
     ,.mem_ext_addr_o(dport_axi_addr_w)
     ,.mem_ext_data_wr_o(dport_axi_data_wr_w)
@@ -249,6 +265,7 @@ u_dmux
     ,.mem_ext_cacheable_o(dport_axi_cacheable_w)
     ,.mem_ext_req_tag_o(dport_axi_req_tag_w)
     ,.mem_ext_invalidate_o(dport_axi_invalidate_w)
+    ,.mem_ext_writeback_o(dport_axi_writeback_w)
     ,.mem_ext_flush_o(dport_axi_flush_w)
 );
 
@@ -270,6 +287,7 @@ u_tcm
     ,.mem_d_cacheable_i(dport_tcm_cacheable_w)
     ,.mem_d_req_tag_i(dport_tcm_req_tag_w)
     ,.mem_d_invalidate_i(dport_tcm_invalidate_w)
+    ,.mem_d_writeback_i(dport_tcm_writeback_w)
     ,.mem_d_flush_i(dport_tcm_flush_w)
     ,.axi_awvalid_i(axi_t_awvalid_i)
     ,.axi_awaddr_i(axi_t_awaddr_i)
@@ -325,6 +343,7 @@ u_axi
     ,.mem_cacheable_i(dport_axi_cacheable_w)
     ,.mem_req_tag_i(dport_axi_req_tag_w)
     ,.mem_invalidate_i(dport_axi_invalidate_w)
+    ,.mem_writeback_i(dport_axi_writeback_w)
     ,.mem_flush_i(dport_axi_flush_w)
     ,.axi_awready_i(axi_i_awready_i)
     ,.axi_wready_i(axi_i_wready_i)

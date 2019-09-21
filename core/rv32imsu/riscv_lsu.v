@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.9.7
+//                            V0.9.8
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2019
 //
@@ -40,6 +40,16 @@
 //-----------------------------------------------------------------
 
 module riscv_lsu
+//-----------------------------------------------------------------
+// Params
+//-----------------------------------------------------------------
+#(
+     parameter MEM_CACHE_ADDR_MIN = 32'h80000000
+    ,parameter MEM_CACHE_ADDR_MAX = 32'h8fffffff
+)
+//-----------------------------------------------------------------
+// Ports
+//-----------------------------------------------------------------
 (
     // Inputs
      input           clk_i
@@ -70,6 +80,7 @@ module riscv_lsu
     ,output          mem_cacheable_o
     ,output [ 10:0]  mem_req_tag_o
     ,output          mem_invalidate_o
+    ,output          mem_writeback_o
     ,output          mem_flush_o
     ,output [  4:0]  writeback_idx_o
     ,output          writeback_squash_o
@@ -101,6 +112,7 @@ reg [  3:0]  mem_wr_q;
 reg          mem_cacheable_q;
 reg [ 10:0]  mem_req_tag_q;
 reg          mem_invalidate_q;
+reg          mem_writeback_q;
 reg          mem_flush_q;
 reg          mem_unaligned_ld_q;
 reg          mem_unaligned_st_q;
@@ -160,11 +172,12 @@ begin
     mem_req_tag_q      <= 11'b0;
     mem_cacheable_q    <= 1'b0;
     mem_invalidate_q   <= 1'b0;
+    mem_writeback_q    <= 1'b0;
     mem_flush_q        <= 1'b0;
     mem_unaligned_ld_q <= 1'b0;
     mem_unaligned_st_q <= 1'b0;
 end
-else if (!((mem_invalidate_o || mem_flush_o || mem_rd_o || mem_wr_o != 4'b0) && !mem_accept_i))
+else if (!((mem_writeback_o || mem_invalidate_o || mem_flush_o || mem_rd_o || mem_wr_o != 4'b0) && !mem_accept_i))
 begin
     mem_addr_q         <= 32'b0;
     mem_data_wr_q      <= 32'b0;
@@ -173,6 +186,7 @@ begin
     mem_cacheable_q    <= 1'b0;
     mem_req_tag_q      <= 11'b0;
     mem_invalidate_q   <= 1'b0;
+    mem_writeback_q    <= 1'b0;
     mem_flush_q        <= 1'b0;
     mem_unaligned_ld_q <=  load_inst_w & mem_unaligned_r;
     mem_unaligned_st_q <= ~load_inst_w & mem_unaligned_r;
@@ -244,6 +258,7 @@ begin
 /* verilator lint_on UNSIGNED */
 
     mem_invalidate_q <= opcode_valid_i & dcache_invalidate_w;
+    mem_writeback_q  <= opcode_valid_i & dcache_writeback_w;
     mem_flush_q      <= opcode_valid_i & dcache_flush_w;
     mem_addr_q       <= mem_addr_r;
 end
@@ -255,10 +270,11 @@ assign mem_wr_o         = mem_wr_q;
 assign mem_cacheable_o  = mem_cacheable_q;
 assign mem_req_tag_o    = mem_req_tag_q;
 assign mem_invalidate_o = mem_invalidate_q;
+assign mem_writeback_o  = mem_writeback_q;
 assign mem_flush_o      = mem_flush_q;
 
 // Stall upstream if cache is busy
-assign stall_o          = ((mem_invalidate_o || mem_flush_o || mem_rd_o || mem_wr_o != 4'b0) && !mem_accept_i);
+assign stall_o          = ((mem_writeback_o || mem_invalidate_o || mem_flush_o || mem_rd_o || mem_wr_o != 4'b0) && !mem_accept_i);
 
 //-----------------------------------------------------------------
 // Error handling / faults

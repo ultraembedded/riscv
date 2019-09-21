@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.9.7
+//                            V0.9.8
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2019
 //
@@ -444,7 +444,7 @@ function set_register; /*verilator public*/
     input [4:0] r;
     input [31:0] value;
 begin
-    u_regfile.set_register(r,value);
+    set_register = u_regfile.set_register(r,value);
 end
 endfunction
 `endif

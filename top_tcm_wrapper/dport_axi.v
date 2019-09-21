@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Top
-//                            V0.5
+//                            V0.6
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2019
 //
@@ -54,6 +54,7 @@ module dport_axi
     ,input           mem_cacheable_i
     ,input  [ 10:0]  mem_req_tag_i
     ,input           mem_invalidate_i
+    ,input           mem_writeback_i
     ,input           mem_flush_i
     ,input           axi_awready_i
     ,input           axi_wready_i

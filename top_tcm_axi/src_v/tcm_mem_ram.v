@@ -1,8 +1,8 @@
 //-----------------------------------------------------------------
 //                         RISC-V Top
-//                            V0.5
+//                            V0.6
 //                     Ultra-Embedded.com
-//                     Copyright 2014-2017
+//                     Copyright 2014-2019
 //
 //                   admin@ultra-embedded.com
 //
@@ -38,76 +38,75 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF 
 // SUCH DAMAGE.
 //-----------------------------------------------------------------
-module mem_fifo_axi_2
-#(
-    parameter WIDTH = 1
-)
+
+//-----------------------------------------------------------------
+//                          Generated File
+//-----------------------------------------------------------------
+module tcm_mem_ram
 (
     // Inputs
-     input               clk_i
-    ,input               rst_i
-    ,input  [WIDTH-1:0]  data_in_i
-    ,input               push_i
-    ,input               pop_i
+     input           clk0_i
+    ,input           rst0_i
+    ,input  [ 13:0]  addr0_i
+    ,input  [ 31:0]  data0_i
+    ,input  [  3:0]  wr0_i
+    ,input           clk1_i
+    ,input           rst1_i
+    ,input  [ 13:0]  addr1_i
+    ,input  [ 31:0]  data1_i
+    ,input  [  3:0]  wr1_i
 
     // Outputs
-    ,output [WIDTH-1:0]  data_out_o
-    ,output              accept_o
-    ,output              valid_o
+    ,output [ 31:0]  data0_o
+    ,output [ 31:0]  data1_o
 );
 
-//-----------------------------------------------------------------
-// Registers
-//-----------------------------------------------------------------
-reg [WIDTH-1:0]  ram_q[1:0];
-reg [0:0]        rd_ptr_q;
-reg [0:0]        wr_ptr_q;
-reg [1:0]        count_q;
+
 
 //-----------------------------------------------------------------
-// Sequential
+// Dual Port RAM 64KB
+// Mode: Read First
 //-----------------------------------------------------------------
-always @ (posedge clk_i or posedge rst_i)
+/* verilator lint_off MULTIDRIVEN */
+reg [31:0]   ram [16383:0] /*verilator public*/;
+/* verilator lint_on MULTIDRIVEN */
+
+reg [31:0] ram_read0_q;
+reg [31:0] ram_read1_q;
+
+
+// Synchronous write
+always @ (posedge clk0_i)
 begin
-    if (rst_i == 1'b1)
-    begin
-        count_q   <= 2'b0;
-        rd_ptr_q  <= 1'b0;
-        wr_ptr_q  <= 1'b0;
-    end
-    else
-    begin
-        // Push
-        if (push_i & accept_o)
-        begin
-            ram_q[wr_ptr_q] <= data_in_i;
-            wr_ptr_q        <= wr_ptr_q + 1'd1;
-        end
+    if (wr0_i[0])
+        ram[addr0_i][7:0] <= data0_i[7:0];
+    if (wr0_i[1])
+        ram[addr0_i][15:8] <= data0_i[15:8];
+    if (wr0_i[2])
+        ram[addr0_i][23:16] <= data0_i[23:16];
+    if (wr0_i[3])
+        ram[addr0_i][31:24] <= data0_i[31:24];
 
-        // Pop
-        if (pop_i & valid_o)
-        begin
-            rd_ptr_q      <= rd_ptr_q + 1'd1;
-        end
-
-        // Count up
-        if ((push_i & accept_o) & ~(pop_i & valid_o))
-        begin
-            count_q <= count_q + 2'd1;
-        end
-        // Count down
-        else if (~(push_i & accept_o) & (pop_i & valid_o))
-        begin
-            count_q <= count_q - 2'd1;
-        end
-    end
+    ram_read0_q <= ram[addr0_i];
 end
 
-//-------------------------------------------------------------------
-// Combinatorial
-//-------------------------------------------------------------------
-assign valid_o       = (count_q != 2'd0);
-assign accept_o      = (count_q != 2'd2);
-assign data_out_o    = ram_q[rd_ptr_q];
+always @ (posedge clk1_i)
+begin
+    if (wr1_i[0])
+        ram[addr1_i][7:0] <= data1_i[7:0];
+    if (wr1_i[1])
+        ram[addr1_i][15:8] <= data1_i[15:8];
+    if (wr1_i[2])
+        ram[addr1_i][23:16] <= data1_i[23:16];
+    if (wr1_i[3])
+        ram[addr1_i][31:24] <= data1_i[31:24];
+
+    ram_read1_q <= ram[addr1_i];
+end
+
+assign data0_o = ram_read0_q;
+assign data1_o = ram_read1_q;
+
+
 
 endmodule

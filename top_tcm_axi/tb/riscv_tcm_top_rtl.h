@@ -18,7 +18,7 @@ public:
     sc_in <bool> clk_in;
     sc_in <bool> rst_in;
     sc_in <bool> rst_cpu_in;
-    sc_in <bool> intr_in;
+    sc_in < sc_uint <32> > intr_in;
 
     sc_in  <axi4_lite_slave>  axi_i_in;
     sc_out <axi4_lite_master> axi_i_out;
@@ -87,7 +87,7 @@ private:
     sc_signal <sc_uint<8> > m_axi_t_arlen_in;
     sc_signal <sc_uint<2> > m_axi_t_arburst_in;
     sc_signal <bool> m_axi_t_rready_in;
-    sc_signal <bool> m_intr_in;
+    sc_signal <sc_uint <32> > m_intr_in;
 
     sc_signal <bool> m_axi_i_awvalid_out;
     sc_signal <sc_uint<32> > m_axi_i_awaddr_out;

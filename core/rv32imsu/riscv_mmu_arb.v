@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.9.7
+//                            V0.9.8
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2019
 //
@@ -40,6 +40,16 @@
 //-----------------------------------------------------------------
 
 module riscv_mmu_arb
+//-----------------------------------------------------------------
+// Params
+//-----------------------------------------------------------------
+#(
+     parameter MEM_CACHE_ADDR_MIN = 32'h80000000
+    ,parameter MEM_CACHE_ADDR_MAX = 32'h8fffffff
+)
+//-----------------------------------------------------------------
+// Ports
+//-----------------------------------------------------------------
 (
     // Inputs
      input           clk_i
@@ -51,6 +61,7 @@ module riscv_mmu_arb
     ,input           inport_cpu_cacheable_i
     ,input  [ 10:0]  inport_cpu_req_tag_i
     ,input           inport_cpu_invalidate_i
+    ,input           inport_cpu_writeback_i
     ,input           inport_cpu_flush_i
     ,input  [ 31:0]  inport_mmu_addr_i
     ,input  [ 31:0]  inport_mmu_data_wr_i
@@ -59,6 +70,7 @@ module riscv_mmu_arb
     ,input           inport_mmu_cacheable_i
     ,input  [ 10:0]  inport_mmu_req_tag_i
     ,input           inport_mmu_invalidate_i
+    ,input           inport_mmu_writeback_i
     ,input           inport_mmu_flush_i
     ,input  [ 31:0]  outport_data_rd_i
     ,input           outport_accept_i
@@ -84,6 +96,7 @@ module riscv_mmu_arb
     ,output          outport_cacheable_o
     ,output [ 10:0]  outport_req_tag_o
     ,output          outport_invalidate_o
+    ,output          outport_writeback_o
     ,output          outport_flush_o
 );
 
@@ -112,7 +125,7 @@ else if (outport_accept_i)
 
 /* verilator lint_off UNSIGNED */
 /* verilator lint_off CMPCONST */
-wire cacheable_w  = outport_addr_o >= 32'h80000000 && outport_addr_o <= 32'h8fffffff;
+wire cacheable_w  = outport_addr_o >= MEM_CACHE_ADDR_MIN && outport_addr_o <= MEM_CACHE_ADDR_MAX;
 /* verilator lint_on CMPCONST */
 /* verilator lint_on UNSIGNED */
 
@@ -123,6 +136,7 @@ assign outport_wr_o         = src_mmu_w ? inport_mmu_wr_i         : inport_cpu_w
 assign outport_cacheable_o  = cacheable_w;
 assign outport_req_tag_o    = src_mmu_w ? {1'b0, 3'b111, 7'b0}    : inport_cpu_req_tag_i;
 assign outport_invalidate_o = src_mmu_w ? inport_mmu_invalidate_i : inport_cpu_invalidate_i;
+assign outport_writeback_o  = src_mmu_w ? inport_mmu_writeback_i  : inport_cpu_writeback_i;
 assign outport_flush_o      = src_mmu_w ? inport_mmu_flush_i      : inport_cpu_flush_i;
 
 assign inport_mmu_accept_o  = src_mmu_w  & outport_accept_i;

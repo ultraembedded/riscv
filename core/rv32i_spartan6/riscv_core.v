@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.9.7
+//                            V0.9.8
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2019
 //
@@ -40,6 +40,16 @@
 //-----------------------------------------------------------------
 
 module riscv_core
+//-----------------------------------------------------------------
+// Params
+//-----------------------------------------------------------------
+#(
+     parameter MEM_CACHE_ADDR_MIN = 0
+    ,parameter MEM_CACHE_ADDR_MAX = 32'h7fffffff
+)
+//-----------------------------------------------------------------
+// Ports
+//-----------------------------------------------------------------
 (
     // Inputs
      input           clk_i
@@ -65,6 +75,7 @@ module riscv_core
     ,output          mem_d_cacheable_o
     ,output [ 10:0]  mem_d_req_tag_o
     ,output          mem_d_invalidate_o
+    ,output          mem_d_writeback_o
     ,output          mem_d_flush_o
     ,output          mem_i_rd_o
     ,output          mem_i_flush_o
@@ -115,7 +126,8 @@ wire           writeback_exec_squash_w;
 wire  [ 31:0]  opcode_ra_operand_w;
 
 
-riscv_csr u_csr
+riscv_csr
+u_csr
 (
     // Inputs
      .clk_i(clk_i)
@@ -152,7 +164,12 @@ riscv_csr u_csr
 );
 
 
-riscv_lsu u_lsu
+riscv_lsu
+#(
+     .MEM_CACHE_ADDR_MIN(MEM_CACHE_ADDR_MIN)
+    ,.MEM_CACHE_ADDR_MAX(MEM_CACHE_ADDR_MAX)
+)
+u_lsu
 (
     // Inputs
      .clk_i(clk_i)
@@ -180,6 +197,7 @@ riscv_lsu u_lsu
     ,.mem_cacheable_o(mem_d_cacheable_o)
     ,.mem_req_tag_o(mem_d_req_tag_o)
     ,.mem_invalidate_o(mem_d_invalidate_o)
+    ,.mem_writeback_o(mem_d_writeback_o)
     ,.mem_flush_o(mem_d_flush_o)
     ,.writeback_idx_o(writeback_mem_idx_w)
     ,.writeback_squash_o(writeback_mem_squash_w)
@@ -195,7 +213,8 @@ riscv_lsu u_lsu
 );
 
 
-riscv_exec u_exec
+riscv_exec
+u_exec
 (
     // Inputs
      .clk_i(clk_i)
@@ -220,7 +239,8 @@ riscv_exec u_exec
 );
 
 
-riscv_decode u_decode
+riscv_decode
+u_decode
 (
     // Inputs
      .clk_i(clk_i)
@@ -269,7 +289,8 @@ riscv_decode u_decode
 );
 
 
-riscv_fetch u_fetch
+riscv_fetch
+u_fetch
 (
     // Inputs
      .clk_i(clk_i)

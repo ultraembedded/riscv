@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.9.7
+//                            V0.9.8
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2019
 //
@@ -40,6 +40,16 @@
 //-----------------------------------------------------------------
 
 module riscv_core
+//-----------------------------------------------------------------
+// Params
+//-----------------------------------------------------------------
+#(
+     parameter MEM_CACHE_ADDR_MIN = 32'h80000000
+    ,parameter MEM_CACHE_ADDR_MAX = 32'h8fffffff
+)
+//-----------------------------------------------------------------
+// Ports
+//-----------------------------------------------------------------
 (
     // Inputs
      input           clk_i
@@ -65,6 +75,7 @@ module riscv_core
     ,output          mem_d_cacheable_o
     ,output [ 10:0]  mem_d_req_tag_o
     ,output          mem_d_invalidate_o
+    ,output          mem_d_writeback_o
     ,output          mem_d_flush_o
     ,output          mem_i_rd_o
     ,output          mem_i_flush_o
@@ -72,6 +83,7 @@ module riscv_core
     ,output [ 31:0]  mem_i_pc_o
 );
 
+wire           mmu_lsu_writeback_w;
 wire           mmu_flush_w;
 wire           csr_stall_w;
 wire           fetch_accept_w;
@@ -98,7 +110,7 @@ wire           fault_misaligned_load_w;
 wire  [ 31:0]  writeback_muldiv_value_w;
 wire  [  3:0]  mmu_lsu_wr_w;
 wire           branch_request_w;
-wire           mmu_ifetch_flush_w;
+wire  [ 31:0]  branch_csr_pc_w;
 wire           fetch_invalidate_w;
 wire           exec_stall_w;
 wire  [ 31:0]  mmu_lsu_data_wr_w;
@@ -145,7 +157,7 @@ wire  [  4:0]  opcode_ra_idx_w;
 wire  [ 31:0]  writeback_mem_value_w;
 wire  [  3:0]  arb_cpu_wr_w;
 wire           mmu_ifetch_rd_w;
-wire  [ 31:0]  branch_csr_pc_w;
+wire           mmu_ifetch_flush_w;
 wire  [ 10:0]  arb_cpu_resp_tag_w;
 wire           arb_cpu_accept_w;
 wire           mmu_load_fault_w;
@@ -155,11 +167,13 @@ wire           mmu_lsu_invalidate_w;
 wire           fault_page_load_w;
 wire  [ 31:0]  arb_cpu_data_wr_w;
 wire  [  4:0]  opcode_rd_idx_w;
+wire           arb_cpu_writeback_w;
 wire           fetch_valid_w;
 wire           mmu_lsu_cacheable_w;
 wire  [  3:0]  arb_mmu_wr_w;
 wire           lsu_opcode_valid_w;
 wire  [ 31:0]  fetch_instr_w;
+wire           arb_mmu_writeback_w;
 wire           arb_mmu_invalidate_w;
 wire  [ 31:0]  mmu_lsu_data_rd_w;
 wire           exec_opcode_valid_w;
@@ -175,7 +189,8 @@ wire           mmu_store_fault_w;
 wire           arb_mmu_flush_w;
 
 
-riscv_exec u_exec
+riscv_exec
+u_exec
 (
     // Inputs
      .clk_i(clk_i)
@@ -200,7 +215,8 @@ riscv_exec u_exec
 );
 
 
-riscv_mmu u_mmu
+riscv_mmu
+u_mmu
 (
     // Inputs
      .clk_i(clk_i)
@@ -229,6 +245,7 @@ riscv_mmu u_mmu
     ,.lsu_in_cacheable_i(mmu_lsu_cacheable_w)
     ,.lsu_in_req_tag_i(mmu_lsu_req_tag_w)
     ,.lsu_in_invalidate_i(mmu_lsu_invalidate_w)
+    ,.lsu_in_writeback_i(mmu_lsu_writeback_w)
     ,.lsu_in_flush_i(mmu_lsu_flush_w)
     ,.lsu_out_data_rd_i(arb_cpu_data_rd_w)
     ,.lsu_out_accept_i(arb_cpu_accept_w)
@@ -244,6 +261,7 @@ riscv_mmu u_mmu
     ,.outport_cacheable_o(arb_mmu_cacheable_w)
     ,.outport_req_tag_o(arb_mmu_req_tag_w)
     ,.outport_invalidate_o(arb_mmu_invalidate_w)
+    ,.outport_writeback_o(arb_mmu_writeback_w)
     ,.outport_flush_o(arb_mmu_flush_w)
     ,.fetch_in_accept_o(mmu_ifetch_accept_w)
     ,.fetch_in_valid_o(mmu_ifetch_valid_w)
@@ -267,6 +285,7 @@ riscv_mmu u_mmu
     ,.lsu_out_cacheable_o(arb_cpu_cacheable_w)
     ,.lsu_out_req_tag_o(arb_cpu_req_tag_w)
     ,.lsu_out_invalidate_o(arb_cpu_invalidate_w)
+    ,.lsu_out_writeback_o(arb_cpu_writeback_w)
     ,.lsu_out_flush_o(arb_cpu_flush_w)
     ,.load_fault_o(mmu_load_fault_w)
     ,.store_fault_o(mmu_store_fault_w)
@@ -274,7 +293,12 @@ riscv_mmu u_mmu
 );
 
 
-riscv_mmu_arb u_arb
+riscv_mmu_arb
+#(
+     .MEM_CACHE_ADDR_MIN(MEM_CACHE_ADDR_MIN)
+    ,.MEM_CACHE_ADDR_MAX(MEM_CACHE_ADDR_MAX)
+)
+u_arb
 (
     // Inputs
      .clk_i(clk_i)
@@ -286,6 +310,7 @@ riscv_mmu_arb u_arb
     ,.inport_cpu_cacheable_i(arb_cpu_cacheable_w)
     ,.inport_cpu_req_tag_i(arb_cpu_req_tag_w)
     ,.inport_cpu_invalidate_i(arb_cpu_invalidate_w)
+    ,.inport_cpu_writeback_i(arb_cpu_writeback_w)
     ,.inport_cpu_flush_i(arb_cpu_flush_w)
     ,.inport_mmu_addr_i(arb_mmu_addr_w)
     ,.inport_mmu_data_wr_i(arb_mmu_data_wr_w)
@@ -294,6 +319,7 @@ riscv_mmu_arb u_arb
     ,.inport_mmu_cacheable_i(arb_mmu_cacheable_w)
     ,.inport_mmu_req_tag_i(arb_mmu_req_tag_w)
     ,.inport_mmu_invalidate_i(arb_mmu_invalidate_w)
+    ,.inport_mmu_writeback_i(arb_mmu_writeback_w)
     ,.inport_mmu_flush_i(arb_mmu_flush_w)
     ,.outport_data_rd_i(mem_d_data_rd_i)
     ,.outport_accept_i(mem_d_accept_i)
@@ -319,11 +345,17 @@ riscv_mmu_arb u_arb
     ,.outport_cacheable_o(mem_d_cacheable_o)
     ,.outport_req_tag_o(mem_d_req_tag_o)
     ,.outport_invalidate_o(mem_d_invalidate_o)
+    ,.outport_writeback_o(mem_d_writeback_o)
     ,.outport_flush_o(mem_d_flush_o)
 );
 
 
-riscv_lsu u_lsu
+riscv_lsu
+#(
+     .MEM_CACHE_ADDR_MIN(MEM_CACHE_ADDR_MIN)
+    ,.MEM_CACHE_ADDR_MAX(MEM_CACHE_ADDR_MAX)
+)
+u_lsu
 (
     // Inputs
      .clk_i(clk_i)
@@ -354,6 +386,7 @@ riscv_lsu u_lsu
     ,.mem_cacheable_o(mmu_lsu_cacheable_w)
     ,.mem_req_tag_o(mmu_lsu_req_tag_w)
     ,.mem_invalidate_o(mmu_lsu_invalidate_w)
+    ,.mem_writeback_o(mmu_lsu_writeback_w)
     ,.mem_flush_o(mmu_lsu_flush_w)
     ,.writeback_idx_o(writeback_mem_idx_w)
     ,.writeback_squash_o(writeback_mem_squash_w)
@@ -369,7 +402,8 @@ riscv_lsu u_lsu
 );
 
 
-riscv_csr u_csr
+riscv_csr
+u_csr
 (
     // Inputs
      .clk_i(clk_i)
@@ -410,7 +444,8 @@ riscv_csr u_csr
 );
 
 
-riscv_muldiv u_muldiv
+riscv_muldiv
+u_muldiv
 (
     // Inputs
      .clk_i(clk_i)
@@ -433,7 +468,8 @@ riscv_muldiv u_muldiv
 );
 
 
-riscv_decode u_decode
+riscv_decode
+u_decode
 (
     // Inputs
      .clk_i(clk_i)
@@ -482,7 +518,8 @@ riscv_decode u_decode
 );
 
 
-riscv_fetch u_fetch
+riscv_fetch
+u_fetch
 (
     // Inputs
      .clk_i(clk_i)
