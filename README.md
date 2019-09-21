@@ -19,8 +19,10 @@ This core has been tested against a co-simulation model, exercised on FPGA, and 
 | isa_sim             | Instruction set simulator (C)                       |
 | top_tcm_axi/src_v   | Example instance with 64KB DP-RAM & AXI Interfaces  |
 | top_tcm_axi/tb      | System-C testbench for the core                     |
+| top_cache_axi/src_v | Example instance with instructon and data caches.   |
+| top_cache_axi/tb    | System-C testbench for the core                     |
 
-## Features: Core
+## Core
 
 The core (riscv_core) contains;
 * RV32I, RV32IM, or RV32IM+Supervisor/User Mode/MMU support depending on core variant.
@@ -28,16 +30,16 @@ The core (riscv_core) contains;
 * Modified Harvard architecture.
 * Custom bus interfaces which can be connected directly to either RAM or Instruction / Data cache.
 
-## Features: Example Core Instance
+## Example Core Instance (with TCM memory)
 
-The top (riscv_tcm_top) contains;
+The top (top_tcm_axi/src_v/riscv_tcm_top.v) contains;
 * Instances one of the above cores, adding RAM and standard bus interfaces.
 * 64KB dual ported RAM for (I/D code and data).
 * AXI4 slave port for loading the RAM, DMA access, etc (including support for burst access).
 * AXI4-Lite master port for CPU access to peripherals.
 * Separate reset for CPU core to dual ported RAM / AXI interface (to allow program code to be loaded prior to CPU reset de-assertion).
 
-## Memory Map
+### Memory Map
 
 | Range                     | Description                                         |
 | ------------------------- | --------------------------------------------------- |
@@ -45,7 +47,7 @@ The top (riscv_tcm_top) contains;
 | 0x0000_2000               | Boot address (configurable, see RISCV_BOOT_ADDRESS) |
 | 0x8000_0000 - 0xffff_ffff | Peripheral address space (from AXI4-L port)         |
 
-## Interfaces
+### Interfaces
 
 | Name         | Description                                                           |
 | ------------ | --------------------------------------------------------------------- |
@@ -56,7 +58,7 @@ The top (riscv_tcm_top) contains;
 | axi_i_*      | AXI4-Lite master interface for CPU access to peripherals.             |
 | intr_i       | Active high interrupt input (for connection external int controller). |
 
-## Testbench
+### Testbench
 
 A basic System-C / Verilator based testbench for the core is provided.
 
@@ -78,6 +80,25 @@ To run the provided test executable;
 cd top_tcm_axi/tb
 make run
 ````
+
+## Example Core Instance (with caches)
+
+The top (top_cache_axi/src_v/riscv_top.v) contains;
+* Instances one of the above cores, adding RAM and standard bus interfaces.
+* 16KB 2-way set associative instruction cache
+* 16KB 2-way set associative data cache with write-back and allocate on write.
+* 2 x AXI4 master port for CPU access to instruction / data / peripherals.
+
+### Interfaces
+
+| Name           | Description                                                           |
+| -------------- | --------------------------------------------------------------------- |
+| clk_i          | Clock input                                                           |
+| rst_i          | Async reset, active-high. Reset memory / AXI interface.               |
+| axi_i_*        | AXI4 master interface for CPU access to instruction memory.           |
+| axi_d_*        | AXI4 master interface for CPU access to data / peripheral memories.   |
+| intr_i         | Active high interrupt input (for connection external int controller). |
+| reset_vector_i | Boot vector.                                                          |
 
 ## Execution Example
 ![](doc/core_exec.png)
