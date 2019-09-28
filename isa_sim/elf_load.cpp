@@ -149,6 +149,12 @@ long elf_get_symbol(const char *filename, const char *symname)
         return -1;
     }
 
+    if (!bfd_check_format_matches(ibfd, bfd_object, &matching)) 
+    {
+        printf("format_matches\n");
+        return -1;
+    }
+
     nsize = bfd_get_symtab_upper_bound (ibfd);
     symtab = (asymbol **)malloc(nsize);
     nsyms = bfd_canonicalize_symtab(ibfd, symtab);
