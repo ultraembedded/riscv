@@ -3,7 +3,10 @@
 Github: http://github.com/ultraembedded/riscv
 
 A 32-bit RISC-V core written in Verilog and an instruction set simulator supporting RV32IM.  
-This core has been tested against a co-simulation model, exercised on FPGA, and is capable of booting a modified version of the Linux kernel.
+This core has been tested against a co-simulation model and exercised on FPGA.
+
+**For a better tested, higher performance core which boots Linux, see my latest RISC-V core here;**
+[http://github.com/ultraembedded/biriscv](http://github.com/ultraembedded/biriscv)
 
 ## Overview
 ![](doc/overview.png)
@@ -15,17 +18,16 @@ This core has been tested against a co-simulation model, exercised on FPGA, and 
 | core/rv32i          | RISC-V pipelined RV32I CPU core (Verilog)           |
 | core/rv32i_spartan6 | RISC-V pipelined RV32I optimised for small Spartan6 |
 | core/rv32im         | RISC-V pipelined RV32IM CPU core (Verilog)          |
-| core/rv32imsu       | RISC-V pipelined RV32IM with supervisor and MMU     |
 | isa_sim             | Instruction set simulator (C)                       |
 | top_tcm_axi/src_v   | Example instance with 64KB DP-RAM & AXI Interfaces  |
 | top_tcm_axi/tb      | System-C testbench for the core                     |
-| top_cache_axi/src_v | Example instance with instructon and data caches.   |
+| top_cache_axi/src_v | Example instance with instruction and data caches.   |
 | top_cache_axi/tb    | System-C testbench for the core                     |
 
 ## Core
 
 The core (riscv_core) contains;
-* RV32I, RV32IM, or RV32IM+Supervisor/User Mode/MMU support depending on core variant.
+* RV32I or RV32IM support depending on core variant.
 * 5-stage in-order, single issue.
 * Modified Harvard architecture.
 * Custom bus interfaces which can be connected directly to either RAM or Instruction / Data cache.
@@ -62,7 +64,7 @@ The top (top_tcm_axi/src_v/riscv_tcm_top.v) contains;
 
 A basic System-C / Verilator based testbench for the core is provided.
 
-Dependancies;
+Dependencies;
 * gcc
 * make
 * libelf
@@ -102,4 +104,3 @@ The top (top_cache_axi/src_v/riscv_top.v) contains;
 
 ## Execution Example
 ![](doc/core_exec.png)
-
