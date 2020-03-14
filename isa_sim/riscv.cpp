@@ -686,6 +686,7 @@ uint32_t Riscv::access_csr(uint32_t address, uint32_t data, bool set, bool clr)
         // Simulation control
         //--------------------------------------------------------
         case CSR_DSCRATCH:
+        case CSR_SIM_CTRL:
             switch (data & 0xFF000000)
             {
                 case CSR_SIM_CTRL_EXIT:

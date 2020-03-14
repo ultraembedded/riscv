@@ -394,6 +394,8 @@
 //--------------------------------------------------------------------
 `define CSR_DSCRATCH       12'h7b2
 `define CSR_DSCRATCH_MASK  32'hFFFFFFFF
+`define CSR_SIM_CTRL       12'h8b2
+`define CSR_SIM_CTRL_MASK  32'hFFFFFFFF
     `define CSR_SIM_CTRL_EXIT (0 << 24)
     `define CSR_SIM_CTRL_PUTC (1 << 24)
     `define CSR_SIM_CTRL_GETC (2 << 24)

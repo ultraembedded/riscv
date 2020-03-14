@@ -510,6 +510,8 @@ static const char * inst_names[ENUM_INST_MAX+1] =
 //--------------------------------------------------------------------
 #define CSR_DSCRATCH       0x7b2
 #define CSR_DSCRATCH_MASK  0xFFFFFFFF
+#define CSR_SIM_CTRL       0x8b2
+#define CSR_SIM_CTRL_MASK  0xFFFFFFFF
     #define CSR_SIM_CTRL_EXIT  (0 << 24)
     #define CSR_SIM_CTRL_PUTC  (1 << 24)
     #define CSR_SIM_CTRL_GETC  (2 << 24)

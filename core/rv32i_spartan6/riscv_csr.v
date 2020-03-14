@@ -539,7 +539,7 @@ begin
 
 `ifdef verilator
     // CSR SIM_CTRL
-    if (opcode_valid_i && (set_r || clr_r) && (imm12_r[11:0] == `CSR_DSCRATCH) && !csr_access_fault_w)
+    if (opcode_valid_i && (set_r || clr_r) && (imm12_r[11:0] == `CSR_DSCRATCH || imm12_r[11:0] == `CSR_SIM_CTRL) && !csr_access_fault_w)
     begin
         case (data_r & 32'hFF000000)
         `CSR_SIM_CTRL_EXIT:
