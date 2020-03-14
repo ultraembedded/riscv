@@ -31,6 +31,8 @@ The core (riscv_core) contains;
 * 5-stage in-order, single issue.
 * Modified Harvard architecture.
 * Custom bus interfaces which can be connected directly to either RAM or Instruction / Data cache.
+* Coremark:  **3.14 CoreMark/MHz**
+* Dhrystone: **1.35 DMIPS/MHz** ('legal compile options' / 337 instructions per iteration)
 
 ## Example Core Instance (with TCM memory)
 
