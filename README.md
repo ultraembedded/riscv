@@ -16,7 +16,7 @@ This core has been tested against a co-simulation model and exercised on FPGA.
 * Support RISC-V integer (I), multiplication and division (M), and CSR instructions (Z) extensions (RV32IMZicsr).
 * Supports user, supervisor and machine mode privilege levels.
 * Basic MMU support - capable of booting Linux with atomics (RV-A) SW emulation.
-* Implements base ISA spec [v2.1](https://github.com/ultraembedded/riscv/blob/master/docs/riscv_isa_spec.pdf) and privileged ISA spec [v1.11](https://github.com/ultraembedded/riscv/blob/master/docs/riscv_privileged_spec.pdf).
+* Implements base ISA spec [v2.1](https://github.com/ultraembedded/riscv/tree/master/doc/riscv_isa_spec.pdf) and privileged ISA spec [v1.11](https://github.com/ultraembedded/riscv/tree/master/doc/riscv_privileged_spec.pdf).
 * Verified using [Google's RISCV-DV](https://github.com/google/riscv-dv) random instruction sequences using cosimulation against [C++ ISA model](https://github.com/ultraembedded/exactstep).
 * Support for instruction / data cache, AXI bus interfaces or tightly coupled memories.
 * Configurable number of pipeline stages and result forwarding options.
