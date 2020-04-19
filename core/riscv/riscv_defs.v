@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.9.8
+//                            V1.0
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2019
 //
@@ -52,69 +52,6 @@
 `define ALU_XOR                                 4'b1001
 `define ALU_LESS_THAN                           4'b1010
 `define ALU_LESS_THAN_SIGNED                    4'b1011
-
-//--------------------------------------------------------------------
-// Instructions Enumerations
-//--------------------------------------------------------------------
-`define       ENUM_INST_ANDI    0
-`define       ENUM_INST_ADDI    1
-`define       ENUM_INST_SLTI    2
-`define      ENUM_INST_SLTIU    3
-`define        ENUM_INST_ORI    4
-`define       ENUM_INST_XORI    5
-`define       ENUM_INST_SLLI    6
-`define       ENUM_INST_SRLI    7
-`define       ENUM_INST_SRAI    8
-`define        ENUM_INST_LUI    9
-`define      ENUM_INST_AUIPC    10
-`define        ENUM_INST_ADD    11
-`define        ENUM_INST_SUB    12
-`define        ENUM_INST_SLT    13
-`define       ENUM_INST_SLTU    14
-`define        ENUM_INST_XOR    15
-`define         ENUM_INST_OR    16
-`define        ENUM_INST_AND    17
-`define        ENUM_INST_SLL    18
-`define        ENUM_INST_SRL    19
-`define        ENUM_INST_SRA    20
-`define        ENUM_INST_JAL    21
-`define       ENUM_INST_JALR    22
-`define        ENUM_INST_BEQ    23
-`define        ENUM_INST_BNE    24
-`define        ENUM_INST_BLT    25
-`define        ENUM_INST_BGE    26
-`define       ENUM_INST_BLTU    27
-`define       ENUM_INST_BGEU    28
-`define         ENUM_INST_LB    29
-`define         ENUM_INST_LH    30
-`define         ENUM_INST_LW    31
-`define        ENUM_INST_LBU    32
-`define        ENUM_INST_LHU    33
-`define        ENUM_INST_LWU    34
-`define         ENUM_INST_SB    35
-`define         ENUM_INST_SH    36
-`define         ENUM_INST_SW    37
-`define      ENUM_INST_ECALL    38
-`define     ENUM_INST_EBREAK    39
-`define       ENUM_INST_ERET    40
-`define      ENUM_INST_CSRRW    41
-`define      ENUM_INST_CSRRS    42
-`define      ENUM_INST_CSRRC    43
-`define     ENUM_INST_CSRRWI    44
-`define     ENUM_INST_CSRRSI    45
-`define     ENUM_INST_CSRRCI    46
-`define        ENUM_INST_MUL    47
-`define       ENUM_INST_MULH    48
-`define     ENUM_INST_MULHSU    49
-`define      ENUM_INST_MULHU    50
-`define        ENUM_INST_DIV    51
-`define       ENUM_INST_DIVU    52
-`define        ENUM_INST_REM    53
-`define       ENUM_INST_REMU    54
-`define       ENUM_INST_FAULT   55
-`define  ENUM_INST_PAGE_FAULT   56
-`define     ENUM_INST_INVALID   57
-`define        ENUM_INST_MAX    58
 
 //--------------------------------------------------------------------
 // Instructions Masks
@@ -356,12 +293,6 @@
 `define INST_IFENCE 32'h100f
 `define INST_IFENCE_MASK 32'h707f
 
-// Fault opcodes (re-purposed FADD,FSUB)
-`define INST_FAULT           32'h53
-`define INST_FAULT_MASK      32'hfe00007f
-`define INST_PAGE_FAULT      32'h8000053
-`define INST_PAGE_FAULT_MASK 32'hfe00007f
-
 //--------------------------------------------------------------------
 // Privilege levels
 //--------------------------------------------------------------------
@@ -393,12 +324,10 @@
 // CSR Registers - Simulation control
 //--------------------------------------------------------------------
 `define CSR_DSCRATCH       12'h7b2
-`define CSR_DSCRATCH_MASK  32'hFFFFFFFF
 `define CSR_SIM_CTRL       12'h8b2
 `define CSR_SIM_CTRL_MASK  32'hFFFFFFFF
     `define CSR_SIM_CTRL_EXIT (0 << 24)
     `define CSR_SIM_CTRL_PUTC (1 << 24)
-    `define CSR_SIM_CTRL_GETC (2 << 24)
 
 //--------------------------------------------------------------------
 // CSR Registers
@@ -431,6 +360,8 @@
 `define CSR_MEPC_MASK     32'hFFFFFFFF
 `define CSR_MCAUSE        12'h342
 `define CSR_MCAUSE_MASK   32'h8000000F
+`define CSR_MTVAL         12'h343
+`define CSR_MTVAL_MASK    32'hFFFFFFFF
 `define CSR_MIP           12'h344
 `define CSR_MIP_MASK      `IRQ_MASK
 `define CSR_MCYCLE        12'hc00
@@ -441,6 +372,10 @@
 `define CSR_MTIMEH_MASK   32'hFFFFFFFF
 `define CSR_MHARTID       12'hF14
 `define CSR_MHARTID_MASK  32'hFFFFFFFF
+
+// Non-std
+`define CSR_MTIMECMP        12'h7c0
+`define CSR_MTIMECMP_MASK   32'hFFFFFFFF
 
 //-----------------------------------------------------------------
 // CSR Registers - Supervisor
@@ -499,14 +434,78 @@
 `define SR_MPP_S       `PRIV_SUPER
 `define SR_MPP_M       `PRIV_MACHINE
 
-`define SR_SUM          (1 << 18)
 `define SR_SUM_R        18
+`define SR_SUM          (1 << `SR_SUM_R)
+
+`define SR_MPRV_R       17
+`define SR_MPRV         (1 << `SR_MPRV_R)
+
+`define SR_MXR_R        19
+`define SR_MXR          (1 << `SR_MXR_R)
 
 `define SR_SMODE_MASK   (`SR_UIE | `SR_SIE | `SR_UPIE | `SR_SPIE | `SR_SPP | `SR_SUM)
 
 //--------------------------------------------------------------------
+// SATP definitions
+//--------------------------------------------------------------------
+`define SATP_PPN_R        19:0 // TODO: Should be 21??
+`define SATP_ASID_R       30:22
+`define SATP_MODE_R       31
+
+//--------------------------------------------------------------------
+// MMU Defs (SV32)
+//--------------------------------------------------------------------
+`define MMU_LEVELS        2
+`define MMU_PTIDXBITS     10
+`define MMU_PTESIZE       4
+`define MMU_PGSHIFT       (`MMU_PTIDXBITS + 2)
+`define MMU_PGSIZE        (1 << `MMU_PGSHIFT)
+`define MMU_VPN_BITS      (`MMU_PTIDXBITS * `MMU_LEVELS)
+`define MMU_PPN_BITS      (32 - `MMU_PGSHIFT)
+`define MMU_VA_BITS       (`MMU_VPN_BITS + `MMU_PGSHIFT)
+
+`define PAGE_PRESENT      0
+`define PAGE_READ         1
+`define PAGE_WRITE        2
+`define PAGE_EXEC         3
+`define PAGE_USER         4
+`define PAGE_GLOBAL       5
+`define PAGE_ACCESSED     6
+`define PAGE_DIRTY        7
+`define PAGE_SOFT         9:8
+
+`define PAGE_FLAGS       10'h3FF
+
+`define PAGE_PFN_SHIFT   10
+`define PAGE_SIZE        4096
+
+//--------------------------------------------------------------------
 // Exception Causes
 //--------------------------------------------------------------------
+`define EXCEPTION_W                        6
+`define EXCEPTION_MISALIGNED_FETCH         6'h10
+`define EXCEPTION_FAULT_FETCH              6'h11
+`define EXCEPTION_ILLEGAL_INSTRUCTION      6'h12
+`define EXCEPTION_BREAKPOINT               6'h13
+`define EXCEPTION_MISALIGNED_LOAD          6'h14
+`define EXCEPTION_FAULT_LOAD               6'h15
+`define EXCEPTION_MISALIGNED_STORE         6'h16
+`define EXCEPTION_FAULT_STORE              6'h17
+`define EXCEPTION_ECALL                    6'h18
+`define EXCEPTION_ECALL_U                  6'h18
+`define EXCEPTION_ECALL_S                  6'h19
+`define EXCEPTION_ECALL_H                  6'h1a
+`define EXCEPTION_ECALL_M                  6'h1b
+`define EXCEPTION_PAGE_FAULT_INST          6'h1c
+`define EXCEPTION_PAGE_FAULT_LOAD          6'h1d
+`define EXCEPTION_PAGE_FAULT_STORE         6'h1f
+`define EXCEPTION_EXCEPTION                6'h10
+`define EXCEPTION_INTERRUPT                6'h20
+`define EXCEPTION_ERET                     6'h30
+`define EXCEPTION_FENCE                    6'h31
+`define EXCEPTION_TYPE_MASK                6'h30
+`define EXCEPTION_SUBTYPE_R                3:0
+
 `define MCAUSE_INT                      31
 `define MCAUSE_MISALIGNED_FETCH         ((0 << `MCAUSE_INT) | 0)
 `define MCAUSE_FAULT_FETCH              ((0 << `MCAUSE_INT) | 1)

@@ -1,38 +1,54 @@
 # RISC-V Core
 
-Github: http://github.com/ultraembedded/riscv
+Github: [http://github.com/ultraembedded/riscv](http://github.com/ultraembedded/riscv)
 
 A 32-bit RISC-V core written in Verilog and an instruction set simulator supporting RV32IM.  
 This core has been tested against a co-simulation model and exercised on FPGA.
 
-**For a better tested, higher performance core which boots Linux, see my latest RISC-V core here;**
+**For a higher performance dual issue CPU with branch prediction, see my latest RISC-V core here;**
 [http://github.com/ultraembedded/biriscv](http://github.com/ultraembedded/biriscv)
 
 ## Overview
 ![](doc/overview.png)
 
+## Features
+* 32-bit RISC-V ISA CPU core.
+* Support RISC-V integer (I), multiplication and division (M), and CSR instructions (Z) extensions (RV32IMZicsr).
+* Supports user, supervisor and machine mode privilege levels.
+* Basic MMU support - capable of booting Linux with atomics (RV-A) SW emulation.
+* Implements base ISA spec [v2.1](https://github.com/ultraembedded/riscv/blob/master/docs/riscv_isa_spec.pdf) and privileged ISA spec [v1.11](https://github.com/ultraembedded/riscv/blob/master/docs/riscv_privileged_spec.pdf).
+* Verified using [Google's RISCV-DV](https://github.com/google/riscv-dv) random instruction sequences using cosimulation against [C++ ISA model](https://github.com/ultraembedded/exactstep).
+* Support for instruction / data cache, AXI bus interfaces or tightly coupled memories.
+* Configurable number of pipeline stages and result forwarding options.
+* Synthesizable Verilog 2001, Verilator and FPGA friendly.
+* Coremark:  **2.94 CoreMark/MHz**
+* Dhrystone: **1.25 DMIPS/MHz** ('legal compile options' / 337 instructions per iteration)
+* Want higher performance (**4.1CM/MHz** / **1.9DMIPS/MHz**) - see [my improved core](http://github.com/ultraembedded/biriscv).
+
+#### Configuration
+
+| Param Name                | Valid Range          | Description                                   |
+| ------------------------- |:--------------------:| ----------------------------------------------|
+| SUPPORT_SUPER             | 1/0                  | Enable supervisor / user privilege levels.    |
+| SUPPORT_MMU               | 1/0                  | Enable basic memory management unit.          |
+| SUPPORT_MULDIV            | 1/0                  | Enable HW multiply / divide (RV-M).           |
+| SUPPORT_LOAD_BYPASS       | 1/0                  | Support load result bypass paths.             |
+| SUPPORT_MUL_BYPASS        | 1/0                  | Support multiply result bypass paths.         |
+| SUPPORT_REGFILE_XILINX    | 1/0                  | Support Xilinx optimised register file.       |
+| EXTRA_DECODE_STAGE        | 1/0                  | Extra decode pipe stage for improved timing.  |
+| MEM_CACHE_ADDR_MIN        | 32'h0 - 32'hffffffff | Lowest cacheable memory address.              |
+| MEM_CACHE_ADDR_MAX        | 32'h0 - 32'hffffffff | Highest cacheable memory address.             |
+
 ## Directories
 
 | Name                | Contents                                            |
 | ------------------- | --------------------------------------------------- |
-| core/rv32i          | RISC-V pipelined RV32I CPU core (Verilog)           |
-| core/rv32i_spartan6 | RISC-V pipelined RV32I optimised for small Spartan6 |
-| core/rv32im         | RISC-V pipelined RV32IM CPU core (Verilog)          |
+| core/riscv          | RISC-V pipelined RV32IM CPU core (Verilog)          |
 | isa_sim             | Instruction set simulator (C)                       |
 | top_tcm_axi/src_v   | Example instance with 64KB DP-RAM & AXI Interfaces  |
 | top_tcm_axi/tb      | System-C testbench for the core                     |
-| top_cache_axi/src_v | Example instance with instruction and data caches.   |
+| top_cache_axi/src_v | Example instance with instruction and data caches.  |
 | top_cache_axi/tb    | System-C testbench for the core                     |
-
-## Core
-
-The core (riscv_core) contains;
-* RV32I or RV32IM support depending on core variant.
-* 5-stage in-order, single issue.
-* Modified Harvard architecture.
-* Custom bus interfaces which can be connected directly to either RAM or Instruction / Data cache.
-* Coremark:  **3.14 CoreMark/MHz**
-* Dhrystone: **1.35 DMIPS/MHz** ('legal compile options' / 337 instructions per iteration)
 
 ## Example Core Instance (with TCM memory)
 

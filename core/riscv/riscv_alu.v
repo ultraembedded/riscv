@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.9.8
+//                            V1.0
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2019
 //
@@ -38,7 +38,6 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF 
 // SUCH DAMAGE.
 //-----------------------------------------------------------------
-
 module riscv_alu
 (
     // Inputs
@@ -49,8 +48,6 @@ module riscv_alu
     // Outputs
     ,output [ 31:0]  alu_p_o
 );
-
-
 
 //-----------------------------------------------------------------
 // Includes
@@ -80,7 +77,18 @@ wire [31:0]     sub_res_w = alu_a_i - alu_b_i;
 //-----------------------------------------------------------------
 always @ (alu_op_i or alu_a_i or alu_b_i or sub_res_w)
 begin
-   case (alu_op_i)
+    shift_right_fill_r = 16'b0;
+    shift_right_1_r = 32'b0;
+    shift_right_2_r = 32'b0;
+    shift_right_4_r = 32'b0;
+    shift_right_8_r = 32'b0;
+
+    shift_left_1_r = 32'b0;
+    shift_left_2_r = 32'b0;
+    shift_left_4_r = 32'b0;
+    shift_left_8_r = 32'b0;
+
+    case (alu_op_i)
        //----------------------------------------------
        // Shift Left
        //----------------------------------------------   
@@ -191,10 +199,9 @@ begin
        begin
             result_r      = alu_a_i;
        end
-   endcase
+    endcase
 end
 
 assign alu_p_o    = result_r;
-
 
 endmodule

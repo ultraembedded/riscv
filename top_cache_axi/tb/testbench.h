@@ -173,8 +173,9 @@ public:
     {
         static uint32_t last_pc = 0;
 
-        if (m_dut->m_rtl->__VlSymsp->TOP__v__u_core__u_exec.get_valid())
-            last_pc = m_dut->m_rtl->__VlSymsp->TOP__v__u_core__u_exec.get_pc();
+        if (m_dut->m_rtl->__VlSymsp->TOP__v__u_core__u_issue.complete_valid0())
+            last_pc = m_dut->m_rtl->__VlSymsp->TOP__v__u_core__u_issue.complete_pc0();
+
 
         return last_pc;
     }    

@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.9.8
+//                            V1.0
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2019
 //
@@ -39,15 +39,15 @@
 // SUCH DAMAGE.
 //-----------------------------------------------------------------
 
-module riscv_muldiv
+module riscv_divider
 (
     // Inputs
      input           clk_i
     ,input           rst_i
     ,input           opcode_valid_i
-    ,input  [ 57:0]  opcode_instr_i
     ,input  [ 31:0]  opcode_opcode_i
     ,input  [ 31:0]  opcode_pc_i
+    ,input           opcode_invalid_i
     ,input  [  4:0]  opcode_rd_idx_i
     ,input  [  4:0]  opcode_ra_idx_i
     ,input  [  4:0]  opcode_rb_idx_i
@@ -55,10 +55,8 @@ module riscv_muldiv
     ,input  [ 31:0]  opcode_rb_operand_i
 
     // Outputs
-    ,output [  4:0]  writeback_idx_o
-    ,output          writeback_squash_o
+    ,output          writeback_valid_o
     ,output [ 31:0]  writeback_value_o
-    ,output          stall_o
 );
 
 
@@ -71,89 +69,24 @@ module riscv_muldiv
 //-------------------------------------------------------------
 // Registers / Wires
 //-------------------------------------------------------------
-
-reg  [4:0]   rd_q;
+reg          valid_q;
 reg  [31:0]  wb_result_q;
-reg  [4:0]   wb_rd_q;
-
-//-------------------------------------------------------------
-// Multiplier
-//-------------------------------------------------------------
-wire [64:0]  mult_result_w;
-reg  [32:0]  operand_b_r;
-reg  [32:0]  operand_a_r;
-reg  [31:0]  result_r;
-reg  [31:0]  mult_result_q;
-reg          mult_busy_q;
-
-
-wire mult_inst_w    = opcode_instr_i[`ENUM_INST_MUL]     || 
-                      opcode_instr_i[`ENUM_INST_MULH]    ||
-                      opcode_instr_i[`ENUM_INST_MULHSU]  ||
-                      opcode_instr_i[`ENUM_INST_MULHU];
-
-// Multiplier takes 1 full cycle, with the result appearing on 
-// writeback the cycle after...
-always @(posedge clk_i or posedge rst_i)
-if (rst_i)
-    mult_busy_q <= 1'b0;
-else if (opcode_valid_i & !stall_o)
-    mult_busy_q <= mult_inst_w;
-else
-    mult_busy_q <= 1'b0;
-
-always @ *
-begin
-    if (opcode_instr_i[`ENUM_INST_MULHSU])
-        operand_a_r = {opcode_ra_operand_i[31], opcode_ra_operand_i[31:0]};
-    else if (opcode_instr_i[`ENUM_INST_MULH])
-        operand_a_r = {opcode_ra_operand_i[31], opcode_ra_operand_i[31:0]};
-    else // ENUM_INST_MULHU || ENUM_INST_MUL
-        operand_a_r = {1'b0, opcode_ra_operand_i[31:0]};
-end
-
-always @ *
-begin
-    if (opcode_instr_i[`ENUM_INST_MULHSU])
-        operand_b_r = {1'b0, opcode_rb_operand_i[31:0]};
-    else if (opcode_instr_i[`ENUM_INST_MULH])
-        operand_b_r = {opcode_rb_operand_i[31], opcode_rb_operand_i[31:0]};
-    else // ENUM_INST_MULHU || ENUM_INST_MUL
-        operand_b_r = {1'b0, opcode_rb_operand_i[31:0]};
-end
-
-assign mult_result_w = {{ 32 {operand_a_r[32]}}, operand_a_r}*{{ 32 {operand_b_r[32]}}, operand_b_r};
- 
-always @ *
-begin
-    result_r = mult_result_w[31:0];
-
-    case (1'b1)
-       opcode_instr_i[`ENUM_INST_MULH], 
-       opcode_instr_i[`ENUM_INST_MULHU],
-       opcode_instr_i[`ENUM_INST_MULHSU]:
-          result_r = mult_result_w[63:32];
-       opcode_instr_i[`ENUM_INST_MUL]:
-          result_r = mult_result_w[31:0];
-    endcase
-end
-
-always @(posedge clk_i or posedge rst_i)
-if (rst_i)
-    mult_result_q <= 32'b0;
-else
-    mult_result_q <= result_r;
 
 //-------------------------------------------------------------
 // Divider
 //-------------------------------------------------------------
-wire div_rem_inst_w     = opcode_instr_i[`ENUM_INST_DIV]  || 
-                          opcode_instr_i[`ENUM_INST_DIVU] ||
-                          opcode_instr_i[`ENUM_INST_REM]  ||
-                          opcode_instr_i[`ENUM_INST_REMU];
+wire inst_div_w         = (opcode_opcode_i & `INST_DIV_MASK) == `INST_DIV;
+wire inst_divu_w        = (opcode_opcode_i & `INST_DIVU_MASK) == `INST_DIVU;
+wire inst_rem_w         = (opcode_opcode_i & `INST_REM_MASK) == `INST_REM;
+wire inst_remu_w        = (opcode_opcode_i & `INST_REMU_MASK) == `INST_REMU;
 
-wire signed_operation_w = opcode_instr_i[`ENUM_INST_DIV] || opcode_instr_i[`ENUM_INST_REM];
-wire div_operation_w    = opcode_instr_i[`ENUM_INST_DIV] || opcode_instr_i[`ENUM_INST_DIVU];
+wire div_rem_inst_w     = ((opcode_opcode_i & `INST_DIV_MASK) == `INST_DIV)  || 
+                          ((opcode_opcode_i & `INST_DIVU_MASK) == `INST_DIVU) ||
+                          ((opcode_opcode_i & `INST_REM_MASK) == `INST_REM)  ||
+                          ((opcode_opcode_i & `INST_REMU_MASK) == `INST_REMU);
+
+wire signed_operation_w = ((opcode_opcode_i & `INST_DIV_MASK) == `INST_DIV) || ((opcode_opcode_i & `INST_REM_MASK) == `INST_REM);
+wire div_operation_w    = ((opcode_opcode_i & `INST_DIV_MASK) == `INST_DIV) || ((opcode_opcode_i & `INST_DIVU_MASK) == `INST_DIVU);
 
 reg [31:0] dividend_q;
 reg [62:0] divisor_q;
@@ -163,7 +96,7 @@ reg        div_inst_q;
 reg        div_busy_q;
 reg        invert_res_q;
 
-wire div_start_w    = opcode_valid_i & div_rem_inst_w & !stall_o;
+wire div_start_w    = opcode_valid_i & div_rem_inst_w;
 wire div_complete_w = !(|q_mask_q) & div_busy_q;
 
 always @(posedge clk_i or posedge rst_i)
@@ -176,9 +109,10 @@ begin
     quotient_q     <= 32'b0;
     q_mask_q       <= 32'b0;
     div_inst_q     <= 1'b0;
-end 
+end
 else if (div_start_w)
 begin
+
     div_busy_q     <= 1'b1;
     div_inst_q     <= div_operation_w;
 
@@ -192,8 +126,8 @@ begin
     else
         divisor_q <= {opcode_rb_operand_i, 31'b0};
 
-    invert_res_q  <= (opcode_instr_i[`ENUM_INST_DIV] && (opcode_ra_operand_i[31] != opcode_rb_operand_i[31]) && |opcode_rb_operand_i) || 
-                     (opcode_instr_i[`ENUM_INST_REM] && opcode_ra_operand_i[31]);
+    invert_res_q  <= (((opcode_opcode_i & `INST_DIV_MASK) == `INST_DIV) && (opcode_ra_operand_i[31] != opcode_rb_operand_i[31]) && |opcode_rb_operand_i) || 
+                     (((opcode_opcode_i & `INST_REM_MASK) == `INST_REM) && opcode_ra_operand_i[31]);
 
     quotient_q     <= 32'b0;
     q_mask_q       <= 32'h80000000;
@@ -225,44 +159,20 @@ begin
         div_result_r = invert_res_q ? -dividend_q : dividend_q;
 end
 
-//-------------------------------------------------------------
-// Shared logic
-//-------------------------------------------------------------
-
-// Stall if divider logic is busy and new multiplier or divider op
-assign stall_o = (div_busy_q  & (mult_inst_w | div_rem_inst_w)) ||
-                 (mult_busy_q & div_rem_inst_w);
-
 always @(posedge clk_i or posedge rst_i)
 if (rst_i)
-    rd_q <= 5'b0;
-else if (opcode_valid_i && (div_rem_inst_w | mult_inst_w) && !stall_o)
-    rd_q <= opcode_rd_idx_i;
-else if (!div_busy_q)
-    rd_q <= 5'b0;
-
-
-always @(posedge clk_i or posedge rst_i)
-if (rst_i)
-    wb_rd_q <= 5'b0;
-else if (mult_busy_q)
-    wb_rd_q <= rd_q;
-else if (div_complete_w)
-    wb_rd_q <= rd_q;
+    valid_q <= 1'b0;
 else
-    wb_rd_q <= 5'b0;
+    valid_q <= div_complete_w;
 
 always @(posedge clk_i or posedge rst_i)
 if (rst_i)
     wb_result_q <= 32'b0;
 else if (div_complete_w)
     wb_result_q <= div_result_r;
-else
-    wb_result_q <= mult_result_q;
 
+assign writeback_valid_o = valid_q;
 assign writeback_value_o  = wb_result_q;
-assign writeback_idx_o    = wb_rd_q;
-assign writeback_squash_o = 1'b0;
 
 
 

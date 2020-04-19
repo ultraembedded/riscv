@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V0.9.8
+//                            V1.0
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2019
 //
@@ -38,20 +38,16 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF 
 // SUCH DAMAGE.
 //-----------------------------------------------------------------
-
-module riscv_regfile
+//-----------------------------------------------------------------
+// Module - Xilinx register file (2 async read, 1 write port)
+//-----------------------------------------------------------------
+module riscv_xilinx_2r1w
 (
     // Inputs
      input           clk_i
     ,input           rst_i
     ,input  [  4:0]  rd0_i
-    ,input  [  4:0]  rd1_i
-    ,input  [  4:0]  rd2_i
-    ,input  [  4:0]  rd3_i
     ,input  [ 31:0]  rd0_value_i
-    ,input  [ 31:0]  rd1_value_i
-    ,input  [ 31:0]  rd2_value_i
-    ,input  [ 31:0]  rd3_value_i
     ,input  [  4:0]  ra_i
     ,input  [  4:0]  rb_i
 
@@ -60,11 +56,6 @@ module riscv_regfile
     ,output [ 31:0]  rb_value_o
 );
 
-
-
-//-----------------------------------------------------------------
-// Module - Xilinx register file (async read, 1 write port)
-//-----------------------------------------------------------------
 
 //-----------------------------------------------------------------
 // Registers / Wires
@@ -82,28 +73,23 @@ wire            write_bankb_w;
 //-----------------------------------------------------------------
 // Register File (using RAM16X1D )
 //-----------------------------------------------------------------
+genvar i;
 
 // Registers 0 - 15
 generate
-begin
-   genvar i;
-   for (i=0;i<32;i=i+1)
-   begin : reg_loop1
-       RAM16X1D reg_bit1a(.WCLK(clk_i), .WE(write_banka_w), .A0(rd0_i[0]), .A1(rd0_i[1]), .A2(rd0_i[2]), .A3(rd0_i[3]), .D(rd0_value_i[i]), .DPRA0(ra_i[0]), .DPRA1(ra_i[1]), .DPRA2(ra_i[2]), .DPRA3(ra_i[3]), .DPO(rs1_0_15_w[i]), .SPO(/* open */));
-       RAM16X1D reg_bit2a(.WCLK(clk_i), .WE(write_banka_w), .A0(rd0_i[0]), .A1(rd0_i[1]), .A2(rd0_i[2]), .A3(rd0_i[3]), .D(rd0_value_i[i]), .DPRA0(rb_i[0]), .DPRA1(rb_i[1]), .DPRA2(rb_i[2]), .DPRA3(rb_i[3]), .DPO(rs2_0_15_w[i]), .SPO(/* open */));
-   end
+for (i=0;i<32;i=i+1)
+begin : reg_loop1
+    RAM16X1D reg_bit1a(.WCLK(clk_i), .WE(write_banka_w), .A0(rd0_i[0]), .A1(rd0_i[1]), .A2(rd0_i[2]), .A3(rd0_i[3]), .D(rd0_value_i[i]), .DPRA0(ra_i[0]), .DPRA1(ra_i[1]), .DPRA2(ra_i[2]), .DPRA3(ra_i[3]), .DPO(rs1_0_15_w[i]), .SPO(/* open */));
+    RAM16X1D reg_bit2a(.WCLK(clk_i), .WE(write_banka_w), .A0(rd0_i[0]), .A1(rd0_i[1]), .A2(rd0_i[2]), .A3(rd0_i[3]), .D(rd0_value_i[i]), .DPRA0(rb_i[0]), .DPRA1(rb_i[1]), .DPRA2(rb_i[2]), .DPRA3(rb_i[3]), .DPO(rs2_0_15_w[i]), .SPO(/* open */));
 end
 endgenerate
 
 // Registers 16 - 31
 generate
-begin
-   genvar i;
-   for (i=0;i<32;i=i+1)
-   begin : reg_loop2
-       RAM16X1D reg_bit1b(.WCLK(clk_i), .WE(write_bankb_w), .A0(rd0_i[0]), .A1(rd0_i[1]), .A2(rd0_i[2]), .A3(rd0_i[3]), .D(rd0_value_i[i]), .DPRA0(ra_i[0]), .DPRA1(ra_i[1]), .DPRA2(ra_i[2]), .DPRA3(ra_i[3]), .DPO(rs1_16_31_w[i]), .SPO(/* open */));
-       RAM16X1D reg_bit2b(.WCLK(clk_i), .WE(write_bankb_w), .A0(rd0_i[0]), .A1(rd0_i[1]), .A2(rd0_i[2]), .A3(rd0_i[3]), .D(rd0_value_i[i]), .DPRA0(rb_i[0]), .DPRA1(rb_i[1]), .DPRA2(rb_i[2]), .DPRA3(rb_i[3]), .DPO(rs2_16_31_w[i]), .SPO(/* open */));
-   end
+for (i=0;i<32;i=i+1)
+begin : reg_loop2
+    RAM16X1D reg_bit1b(.WCLK(clk_i), .WE(write_bankb_w), .A0(rd0_i[0]), .A1(rd0_i[1]), .A2(rd0_i[2]), .A3(rd0_i[3]), .D(rd0_value_i[i]), .DPRA0(ra_i[0]), .DPRA1(ra_i[1]), .DPRA2(ra_i[2]), .DPRA3(ra_i[3]), .DPO(rs1_16_31_w[i]), .SPO(/* open */));
+    RAM16X1D reg_bit2b(.WCLK(clk_i), .WE(write_bankb_w), .A0(rd0_i[0]), .A1(rd0_i[1]), .A2(rd0_i[2]), .A3(rd0_i[3]), .D(rd0_value_i[i]), .DPRA0(rb_i[0]), .DPRA1(rb_i[1]), .DPRA2(rb_i[2]), .DPRA3(rb_i[3]), .DPO(rs2_16_31_w[i]), .SPO(/* open */));
 end
 endgenerate
 
@@ -138,12 +124,12 @@ end
 assign ra_value_o = ra_value_r;
 assign rb_value_o = rb_value_r;
 
-`ifdef verilator
 endmodule
 
 //-------------------------------------------------------------
 // RAM16X1D: Verilator target RAM16X1D model
 //-------------------------------------------------------------
+`ifdef verilator
 module RAM16X1D (DPO, SPO, A0, A1, A2, A3, D, DPRA0, DPRA1, DPRA2, DPRA3, WCLK, WE);
 
     parameter INIT = 16'h0000;
@@ -166,7 +152,5 @@ module RAM16X1D (DPO, SPO, A0, A1, A2, A3, D, DPRA0, DPRA1, DPRA2, DPRA3, WCLK, 
         if (WE == 1'b1)
             mem[adr] <= D;
 
-`endif
-
-
 endmodule
+`endif

@@ -6,7 +6,7 @@ SYSTEMC_HOME  ?= /usr/local/systemc-2.3.1
 
 TEST_IMAGE ?= ../../isa_sim/images/basic.elf
 
-CORE       ?= rv32im
+CORE       ?= riscv
 
 export VERILATOR_SRC
 export SYSTEMC_HOME
