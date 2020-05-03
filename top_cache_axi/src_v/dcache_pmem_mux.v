@@ -45,7 +45,9 @@
 module dcache_pmem_mux
 (
     // Inputs
-     input           outport_accept_i
+     input           clk_i
+    ,input           rst_i
+    ,input           outport_accept_i
     ,input           outport_ack_i
     ,input           outport_error_i
     ,input  [ 31:0]  outport_read_data_i
@@ -88,6 +90,7 @@ reg          outport_rd_r;
 reg [  7:0]  outport_len_r;
 reg [ 31:0]  outport_addr_r;
 reg [ 31:0]  outport_write_data_r;
+reg          select_q;
 
 always @ *
 begin
@@ -117,12 +120,19 @@ assign outport_len_o        = outport_len_r;
 assign outport_addr_o       = outport_addr_r;
 assign outport_write_data_o = outport_write_data_r;
 
-assign inport0_ack_o       = (select_i == 1'd0) && outport_ack_i;
-assign inport0_error_o     = (select_i == 1'd0) && outport_error_i;
+// Delayed version of selector to match phase of response signals
+always @ (posedge clk_i or posedge rst_i)
+if (rst_i)
+    select_q <= 1'b0;
+else
+    select_q <= select_i;
+
+assign inport0_ack_o       = (select_q == 1'd0) && outport_ack_i;
+assign inport0_error_o     = (select_q == 1'd0) && outport_error_i;
 assign inport0_read_data_o = outport_read_data_i;
 assign inport0_accept_o    = (select_i == 1'd0) && outport_accept_i;
-assign inport1_ack_o       = (select_i == 1'd1) && outport_ack_i;
-assign inport1_error_o     = (select_i == 1'd1) && outport_error_i;
+assign inport1_ack_o       = (select_q == 1'd1) && outport_ack_i;
+assign inport1_error_o     = (select_q == 1'd1) && outport_error_i;
 assign inport1_read_data_o = outport_read_data_i;
 assign inport1_accept_o    = (select_i == 1'd1) && outport_accept_i;
 

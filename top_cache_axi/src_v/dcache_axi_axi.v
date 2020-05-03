@@ -100,36 +100,6 @@ module dcache_axi_axi
 
 
 //-------------------------------------------------------------
-// Write Request
-//-------------------------------------------------------------
-reg awvalid_inhibit_q;
-reg wvalid_inhibit_q;
-
-always @ (posedge clk_i or posedge rst_i)
-if (rst_i)
-    awvalid_inhibit_q <= 1'b0;
-else if (outport_awvalid_o && outport_awready_i && outport_wvalid_o && !outport_wready_i)
-    awvalid_inhibit_q <= 1'b1;
-else if (outport_awvalid_o && outport_awready_i && outport_awlen_o != 8'b0)
-    awvalid_inhibit_q <= 1'b1;
-else if (outport_wvalid_o && outport_wready_i && outport_wlast_o)
-    awvalid_inhibit_q <= 1'b0;
-
-always @ (posedge clk_i or posedge rst_i)
-if (rst_i)
-    wvalid_inhibit_q <= 1'b0;
-else if (outport_wvalid_o && outport_wready_i && outport_awvalid_o && !outport_awready_i)
-    wvalid_inhibit_q <= 1'b1;
-else if (outport_awvalid_o && outport_awready_i)
-    wvalid_inhibit_q <= 1'b0;
-
-assign outport_awvalid_o = (inport_valid_i & inport_write_i & ~awvalid_inhibit_q);
-assign outport_awaddr_o  = inport_addr_i;
-assign outport_awid_o    = inport_id_i;
-assign outport_awlen_o   = inport_len_i;
-assign outport_awburst_o = inport_burst_i;
-
-//-------------------------------------------------------------
 // Write burst tracking
 //-------------------------------------------------------------
 reg  [7:0] req_cnt_q;
@@ -137,43 +107,89 @@ reg  [7:0] req_cnt_q;
 always @ (posedge clk_i or posedge rst_i)
 if (rst_i)
     req_cnt_q <= 8'b0;
-else if (outport_awvalid_o && outport_awready_i)
+else if (inport_valid_i && inport_write_i && inport_accept_o)
 begin
-    // First data not accepted yet
-    if (!outport_wready_i && !wvalid_inhibit_q)
-        req_cnt_q <= (outport_awlen_o + 8'd1);
-    // First data already accepted
+    if (req_cnt_q != 8'b0)
+        req_cnt_q <= req_cnt_q - 8'd1;
     else
-        req_cnt_q <= outport_awlen_o;
+        req_cnt_q <= inport_len_i;
 end
-else if (req_cnt_q != 8'd0 && outport_wvalid_o && outport_wready_i)
-    req_cnt_q <= req_cnt_q - 8'd1;
-
-wire wlast_w = (outport_awvalid_o && outport_awlen_o == 8'b0) || (req_cnt_q == 8'd1);
 
 //-------------------------------------------------------------
-// Write data skid buffer
+// Request skid buffer
 //-------------------------------------------------------------
-reg buf_valid_q;
-always @ (posedge clk_i or posedge rst_i)
-if (rst_i)
-    buf_valid_q <= 1'b0;
-else if (outport_wvalid_o && !outport_wready_i && outport_awvalid_o && outport_awready_i)
-    buf_valid_q <= 1'b1;
-else if (outport_wready_i)
-    buf_valid_q <= 1'b0;
+reg        valid_q;
+reg [83:0] buf_q;
 
-reg [36:0] buf_q;
 always @ (posedge clk_i or posedge rst_i)
 if (rst_i)
-    buf_q <= 37'b0;
+    valid_q <= 1'b0;
+else if (inport_valid_i && inport_accept_o && ((outport_awvalid_o && !outport_awready_i) || (outport_wvalid_o && !outport_wready_i) || (outport_arvalid_o && !outport_arready_i)))
+    valid_q <= 1'b1;
+else if ((!outport_awvalid_o || outport_awready_i) && (!outport_wvalid_o || outport_wready_i) && (!outport_arvalid_o || outport_arready_i))
+    valid_q <= 1'b0;
+
+wire          inport_valid_w = valid_q || inport_valid_i;
+wire          inport_write_w = valid_q ? buf_q[0:0]   : inport_write_i;
+wire [ 31:0]  inport_addr_w  = valid_q ? buf_q[32:1]  : inport_addr_i;
+wire [  3:0]  inport_id_w    = valid_q ? buf_q[36:33] : inport_id_i;
+wire [  7:0]  inport_len_w   = valid_q ? buf_q[44:37] : inport_len_i;
+wire [  1:0]  inport_burst_w = valid_q ? buf_q[46:45] : inport_burst_i;
+wire [ 31:0]  inport_wdata_w = valid_q ? buf_q[78:47] : inport_wdata_i;
+wire [  3:0]  inport_wstrb_w = valid_q ? buf_q[82:79] : inport_wstrb_i;
+wire          inport_wlast_w = valid_q ? buf_q[83:83] : (inport_len_i == 8'd0 && req_cnt_q == 8'd0) || (req_cnt_q == 8'd1);
+
+always @ (posedge clk_i or posedge rst_i)
+if (rst_i)
+    buf_q <= 84'b0;
 else
-    buf_q <= {outport_wlast_o, outport_wstrb_o, outport_wdata_o};
+    buf_q <= {inport_wlast_w, inport_wstrb_w, inport_wdata_w, inport_burst_w, inport_len_w, inport_id_w, inport_addr_w, inport_write_w};
 
-assign outport_wvalid_o  = buf_valid_q ? 1'b1 : (inport_valid_i & inport_write_i & ~wvalid_inhibit_q);
-assign outport_wdata_o   = buf_valid_q ? buf_q[31:0]  : inport_wdata_i;
-assign outport_wstrb_o   = buf_valid_q ? buf_q[35:32] : inport_wstrb_i;
-assign outport_wlast_o   = buf_valid_q ? buf_q[36:36] : wlast_w;
+wire skid_busy_w = valid_q;
+
+//-------------------------------------------------------------
+// Write Request
+//-------------------------------------------------------------
+reg awvalid_q;
+reg wvalid_q;
+reg wlast_q;
+
+wire wr_cmd_accepted_w  = (outport_awvalid_o && outport_awready_i) || awvalid_q;
+wire wr_data_accepted_w = (outport_wvalid_o  && outport_wready_i)  || wvalid_q;
+wire wr_data_last_w     = (wvalid_q & wlast_q) || (outport_wvalid_o && outport_wready_i && outport_wlast_o);
+
+always @ (posedge clk_i or posedge rst_i)
+if (rst_i)
+    awvalid_q <= 1'b0;
+else if (outport_awvalid_o && outport_awready_i && (!wr_data_accepted_w || !wr_data_last_w))
+    awvalid_q <= 1'b1;
+else if (wr_data_accepted_w && wr_data_last_w)
+    awvalid_q <= 1'b0;
+
+always @ (posedge clk_i or posedge rst_i)
+if (rst_i)
+    wvalid_q <= 1'b0;
+else if (outport_wvalid_o && outport_wready_i && !wr_cmd_accepted_w)
+    wvalid_q <= 1'b1;
+else if (wr_cmd_accepted_w)
+    wvalid_q <= 1'b0;
+
+always @ (posedge clk_i or posedge rst_i)
+if (rst_i)
+    wlast_q <= 1'b0;
+else if (outport_wvalid_o && outport_wready_i)
+    wlast_q <= outport_wlast_o;
+
+assign outport_awvalid_o = (inport_valid_w & inport_write_w & ~awvalid_q);
+assign outport_awaddr_o  = inport_addr_w;
+assign outport_awid_o    = inport_id_w;
+assign outport_awlen_o   = inport_len_w;
+assign outport_awburst_o = inport_burst_w;
+
+assign outport_wvalid_o  = (inport_valid_w & inport_write_w & ~wvalid_q);
+assign outport_wdata_o   = inport_wdata_w;
+assign outport_wstrb_o   = inport_wstrb_w;
+assign outport_wlast_o   = inport_wlast_w;
 
 assign inport_bvalid_o   = outport_bvalid_i;
 assign inport_bresp_o    = outport_bresp_i;
@@ -183,11 +199,11 @@ assign outport_bready_o  = inport_bready_i;
 //-------------------------------------------------------------
 // Read Request
 //-------------------------------------------------------------
-assign outport_arvalid_o = inport_valid_i & ~inport_write_i;
-assign outport_araddr_o  = inport_addr_i;
-assign outport_arid_o    = inport_id_i;
-assign outport_arlen_o   = inport_len_i;
-assign outport_arburst_o = inport_burst_i;
+assign outport_arvalid_o = inport_valid_w & ~inport_write_w;
+assign outport_araddr_o  = inport_addr_w;
+assign outport_arid_o    = inport_id_w;
+assign outport_arlen_o   = inport_len_w;
+assign outport_arburst_o = inport_burst_w;
 assign outport_rready_o  = inport_rready_i;
 
 assign inport_rvalid_o   = outport_rvalid_i;
@@ -199,9 +215,10 @@ assign inport_rlast_o    = outport_rlast_i;
 //-------------------------------------------------------------
 // Accept logic
 //-------------------------------------------------------------
-assign inport_accept_o   = (outport_awvalid_o && outport_awready_i) || 
-                           (outport_wvalid_o  && outport_wready_i && !buf_valid_q)  ||
-                           (outport_arvalid_o && outport_arready_i);
+assign inport_accept_o   = !skid_busy_w &&
+                           ((outport_awvalid_o && outport_awready_i) || 
+                            (outport_wvalid_o  && outport_wready_i)  ||
+                            (outport_arvalid_o && outport_arready_i));
 
 
 endmodule

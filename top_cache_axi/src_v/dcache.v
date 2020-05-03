@@ -197,7 +197,9 @@ dcache_pmem_mux
 u_pmem_mux
 (
     // Inputs
-     .outport_accept_i(pmem_accept_w)
+     .clk_i(clk_i)
+    ,.rst_i(rst_i)
+    ,.outport_accept_i(pmem_accept_w)
     ,.outport_ack_i(pmem_ack_w)
     ,.outport_error_i(pmem_error_w)
     ,.outport_read_data_i(pmem_read_data_w)
