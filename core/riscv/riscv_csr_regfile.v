@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V1.0
+//                            V1.0.1
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2019
 //
@@ -101,6 +101,7 @@ reg [31:0]  csr_mip_q;
 reg [31:0]  csr_mie_q;
 reg [1:0]   csr_mpriv_q;
 reg [31:0]  csr_mcycle_q;
+reg [31:0]  csr_mcycle_h_q;
 reg [31:0]  csr_mscratch_q;
 reg [31:0]  csr_mtval_q;
 reg [31:0]  csr_mtimecmp_q;
@@ -190,6 +191,7 @@ begin
     `CSR_MIE:      rdata_r = csr_mie_q & `CSR_MIE_MASK;
     `CSR_MCYCLE,
     `CSR_MTIME:    rdata_r = csr_mcycle_q;
+    `CSR_MTIMEH:   rdata_r = csr_mcycle_h_q;
     `CSR_MHARTID:  rdata_r = cpu_id_i;
     `CSR_MISA:     rdata_r = misa_i;
     `CSR_MEDELEG:  rdata_r = SUPPORT_SUPER ? (csr_medeleg_q & `CSR_MEDELEG_MASK) : 32'b0;
@@ -330,11 +332,10 @@ begin
         end
     end
     // Exception return
-    else if (exception_i == `EXCEPTION_ERET)
+    else if (exception_i >= `EXCEPTION_ERET_U && exception_i <= `EXCEPTION_ERET_M)
     begin
-        // TODO: Not quite correct - should check which ERET insn
         // MRET (return from machine)
-        if (csr_mpriv_q == `PRIV_MACHINE)
+        if (exception_i[1:0] == `PRIV_MACHINE)
         begin
             // Set privilege level to previous MPP
             csr_mpriv_r          = csr_sr_r[`SR_MPP_R];
@@ -506,6 +507,7 @@ begin
     csr_mie_q          <= 32'b0;
     csr_mpriv_q        <= `PRIV_MACHINE;
     csr_mcycle_q       <= 32'b0;
+    csr_mcycle_h_q     <= 32'b0;
     csr_mscratch_q     <= 32'b0;
     csr_mtimecmp_q     <= 32'b0;
     csr_mtime_ie_q     <= 1'b0;
@@ -550,6 +552,10 @@ begin
 
     csr_mip_next_q     <= buffer_mip_w ? csr_mip_next_r : 32'b0;
 
+    // Increment upper cycle counter on lower 32-bit overflow
+    if (csr_mcycle_q == 32'hFFFFFFFF)
+        csr_mcycle_h_q <= csr_mcycle_h_q + 32'd1;
+
 `ifdef HAS_SIM_CTRL
     // CSR SIM_CTRL (or DSCRATCH)
     if ((csr_waddr_i == `CSR_DSCRATCH || csr_waddr_i == `CSR_SIM_CTRL) && ~(|exception_i))
@@ -588,11 +594,10 @@ begin
         branch_target_r = (irq_priv_q == `PRIV_MACHINE) ? csr_mtvec_q : csr_stvec_q;
     end
     // Exception return
-    else if (exception_i == `EXCEPTION_ERET)
+    else if (exception_i >= `EXCEPTION_ERET_U && exception_i <= `EXCEPTION_ERET_M)
     begin
-        // TODO: Not quite correct - should check which ERET insn
         // MRET (return from machine)
-        if (csr_mpriv_q == `PRIV_MACHINE)
+        if (exception_i[1:0] == `PRIV_MACHINE)
         begin    
             branch_r        = 1'b1;
             branch_target_r = csr_mepc_q;

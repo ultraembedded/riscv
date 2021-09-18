@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V1.0
+//                            V1.0.1
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2019
 //
@@ -59,14 +59,6 @@ module riscv_decode
     ,input  [ 31:0]  fetch_in_pc_i
     ,input           fetch_in_fault_fetch_i
     ,input           fetch_in_fault_page_i
-    ,input           fetch_in_instr_exec_i
-    ,input           fetch_in_instr_lsu_i
-    ,input           fetch_in_instr_branch_i
-    ,input           fetch_in_instr_mul_i
-    ,input           fetch_in_instr_div_i
-    ,input           fetch_in_instr_csr_i
-    ,input           fetch_in_instr_rd_valid_i
-    ,input           fetch_in_instr_invalid_i
     ,input           fetch_out_accept_i
     ,input           squash_decode_i
 

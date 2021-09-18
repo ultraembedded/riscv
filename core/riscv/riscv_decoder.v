@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V1.0
+//                            V1.0.1
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2019
 //
@@ -99,7 +99,7 @@ wire invalid_w =    valid_i &&
                     ((opcode_i & `INST_SW_MASK) == `INST_SW)                  ||
                     ((opcode_i & `INST_ECALL_MASK) == `INST_ECALL)            ||
                     ((opcode_i & `INST_EBREAK_MASK) == `INST_EBREAK)          ||
-                    ((opcode_i & `INST_MRET_MASK) == `INST_MRET)              ||
+                    ((opcode_i & `INST_ERET_MASK) == `INST_ERET)              ||
                     ((opcode_i & `INST_CSRRW_MASK) == `INST_CSRRW)            ||
                     ((opcode_i & `INST_CSRRS_MASK) == `INST_CSRRS)            ||
                     ((opcode_i & `INST_CSRRC_MASK) == `INST_CSRRC)            ||
@@ -220,7 +220,7 @@ assign div_o =      enable_muldiv_i &&
 
 assign csr_o =      ((opcode_i & `INST_ECALL_MASK) == `INST_ECALL)            ||
                     ((opcode_i & `INST_EBREAK_MASK) == `INST_EBREAK)          ||
-                    ((opcode_i & `INST_MRET_MASK) == `INST_MRET)              ||
+                    ((opcode_i & `INST_ERET_MASK) == `INST_ERET)              ||
                     ((opcode_i & `INST_CSRRW_MASK) == `INST_CSRRW)            ||
                     ((opcode_i & `INST_CSRRS_MASK) == `INST_CSRRS)            ||
                     ((opcode_i & `INST_CSRRC_MASK) == `INST_CSRRC)            ||

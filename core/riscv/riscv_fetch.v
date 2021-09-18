@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V1.0
+//                            V1.0.1
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2019
 //
@@ -70,14 +70,6 @@ module riscv_fetch
     ,output [ 31:0]  fetch_pc_o
     ,output          fetch_fault_fetch_o
     ,output          fetch_fault_page_o
-    ,output          fetch_instr_exec_o
-    ,output          fetch_instr_lsu_o
-    ,output          fetch_instr_branch_o
-    ,output          fetch_instr_mul_o
-    ,output          fetch_instr_div_o
-    ,output          fetch_instr_csr_o
-    ,output          fetch_instr_rd_valid_o
-    ,output          fetch_instr_invalid_o
     ,output          icache_rd_o
     ,output          icache_flush_o
     ,output          icache_invalidate_o

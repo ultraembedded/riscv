@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V1.0
+//                            V1.0.1
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2019
 //
@@ -93,7 +93,6 @@ module riscv_core
 wire           mmu_lsu_writeback_w;
 wire  [  1:0]  fetch_in_priv_w;
 wire  [  4:0]  mul_opcode_rd_idx_w;
-wire           fetch_dec_instr_csr_w;
 wire           mmu_flush_w;
 wire  [ 31:0]  lsu_opcode_pc_w;
 wire           fetch_accept_w;
@@ -114,7 +113,6 @@ wire           mmu_ifetch_valid_w;
 wire           csr_opcode_invalid_w;
 wire  [  5:0]  csr_writeback_exception_w;
 wire           fetch_instr_mul_w;
-wire           fetch_dec_instr_exec_w;
 wire           branch_exec_is_ret_w;
 wire  [ 31:0]  csr_writeback_exception_addr_w;
 wire  [  3:0]  mmu_lsu_wr_w;
@@ -139,7 +137,6 @@ wire  [  4:0]  mul_opcode_ra_idx_w;
 wire  [  4:0]  csr_opcode_rb_idx_w;
 wire           lsu_stall_w;
 wire           branch_exec_is_not_taken_w;
-wire           fetch_dec_instr_mul_w;
 wire  [ 31:0]  branch_exec_pc_w;
 wire  [ 31:0]  opcode_opcode_w;
 wire  [ 31:0]  mul_opcode_pc_w;
@@ -148,7 +145,6 @@ wire  [ 31:0]  mul_opcode_ra_operand_w;
 wire           branch_exec_is_taken_w;
 wire           fetch_dec_fault_fetch_w;
 wire           fetch_dec_valid_w;
-wire           fetch_dec_instr_lsu_w;
 wire           fetch_fault_fetch_w;
 wire           lsu_opcode_invalid_w;
 wire  [ 31:0]  mmu_lsu_addr_w;
@@ -156,11 +152,9 @@ wire           mul_hold_w;
 wire           mmu_ifetch_accept_w;
 wire           mmu_lsu_ack_w;
 wire  [ 31:0]  fetch_pc_w;
-wire           fetch_dec_instr_div_w;
 wire           mmu_ifetch_invalidate_w;
 wire  [ 31:0]  mul_opcode_rb_operand_w;
 wire  [  1:0]  branch_csr_priv_w;
-wire           fetch_dec_instr_invalid_w;
 wire           branch_exec_request_w;
 wire  [ 31:0]  lsu_opcode_ra_operand_w;
 wire           div_opcode_valid_w;
@@ -169,10 +163,9 @@ wire           mmu_lsu_rd_w;
 wire  [ 31:0]  fetch_dec_pc_w;
 wire           interrupt_inhibit_w;
 wire           mmu_ifetch_error_w;
-wire           fetch_dec_instr_branch_w;
 wire  [  5:0]  writeback_mem_exception_w;
 wire           fetch_instr_lsu_w;
-wire           csr_result_e1_write_w;
+wire  [  1:0]  mmu_priv_d_w;
 wire  [  4:0]  opcode_ra_idx_w;
 wire  [ 31:0]  csr_opcode_ra_operand_w;
 wire  [ 31:0]  writeback_mem_value_w;
@@ -207,7 +200,7 @@ wire           mmu_lsu_cacheable_w;
 wire           fetch_instr_csr_w;
 wire           lsu_opcode_valid_w;
 wire  [ 31:0]  fetch_dec_instr_w;
-wire  [  1:0]  mmu_priv_d_w;
+wire           csr_result_e1_write_w;
 wire  [ 31:0]  csr_opcode_opcode_w;
 wire           fetch_instr_div_w;
 wire  [ 31:0]  fetch_instr_w;
@@ -220,7 +213,6 @@ wire           mmu_lsu_flush_w;
 wire  [  4:0]  lsu_opcode_rb_idx_w;
 wire           mmu_lsu_accept_w;
 wire  [ 31:0]  lsu_opcode_rb_operand_w;
-wire           fetch_dec_instr_rd_valid_w;
 wire           mmu_sum_w;
 wire  [ 31:0]  writeback_exec_value_w;
 wire  [  4:0]  lsu_opcode_ra_idx_w;
@@ -264,8 +256,8 @@ u_exec
 
 riscv_decode
 #(
-     .SUPPORT_MULDIV(SUPPORT_MULDIV)
-    ,.EXTRA_DECODE_STAGE(EXTRA_DECODE_STAGE)
+     .EXTRA_DECODE_STAGE(EXTRA_DECODE_STAGE)
+    ,.SUPPORT_MULDIV(SUPPORT_MULDIV)
 )
 u_decode
 (
@@ -277,14 +269,6 @@ u_decode
     ,.fetch_in_pc_i(fetch_dec_pc_w)
     ,.fetch_in_fault_fetch_i(fetch_dec_fault_fetch_w)
     ,.fetch_in_fault_page_i(fetch_dec_fault_page_w)
-    ,.fetch_in_instr_exec_i(fetch_dec_instr_exec_w)
-    ,.fetch_in_instr_lsu_i(fetch_dec_instr_lsu_w)
-    ,.fetch_in_instr_branch_i(fetch_dec_instr_branch_w)
-    ,.fetch_in_instr_mul_i(fetch_dec_instr_mul_w)
-    ,.fetch_in_instr_div_i(fetch_dec_instr_div_w)
-    ,.fetch_in_instr_csr_i(fetch_dec_instr_csr_w)
-    ,.fetch_in_instr_rd_valid_i(fetch_dec_instr_rd_valid_w)
-    ,.fetch_in_instr_invalid_i(fetch_dec_instr_invalid_w)
     ,.fetch_out_accept_i(fetch_accept_w)
     ,.squash_decode_i(squash_decode_w)
 
@@ -308,9 +292,9 @@ u_decode
 
 riscv_mmu
 #(
-     .SUPPORT_MMU(SUPPORT_MMU)
+     .MEM_CACHE_ADDR_MAX(MEM_CACHE_ADDR_MAX)
+    ,.SUPPORT_MMU(SUPPORT_MMU)
     ,.MEM_CACHE_ADDR_MIN(MEM_CACHE_ADDR_MIN)
-    ,.MEM_CACHE_ADDR_MAX(MEM_CACHE_ADDR_MAX)
 )
 u_mmu
 (
@@ -377,8 +361,8 @@ u_mmu
 
 riscv_lsu
 #(
-     .MEM_CACHE_ADDR_MIN(MEM_CACHE_ADDR_MIN)
-    ,.MEM_CACHE_ADDR_MAX(MEM_CACHE_ADDR_MAX)
+     .MEM_CACHE_ADDR_MAX(MEM_CACHE_ADDR_MAX)
+    ,.MEM_CACHE_ADDR_MIN(MEM_CACHE_ADDR_MIN)
 )
 u_lsu
 (
@@ -421,8 +405,8 @@ u_lsu
 
 riscv_csr
 #(
-     .SUPPORT_MULDIV(SUPPORT_MULDIV)
-    ,.SUPPORT_SUPER(SUPPORT_SUPER)
+     .SUPPORT_SUPER(SUPPORT_SUPER)
+    ,.SUPPORT_MULDIV(SUPPORT_MULDIV)
 )
 u_csr
 (
@@ -513,10 +497,11 @@ u_div
 
 riscv_issue
 #(
-     .SUPPORT_MULDIV(SUPPORT_MULDIV)
+     .SUPPORT_REGFILE_XILINX(SUPPORT_REGFILE_XILINX)
     ,.SUPPORT_LOAD_BYPASS(SUPPORT_LOAD_BYPASS)
+    ,.SUPPORT_MULDIV(SUPPORT_MULDIV)
     ,.SUPPORT_MUL_BYPASS(SUPPORT_MUL_BYPASS)
-    ,.SUPPORT_REGFILE_XILINX(SUPPORT_REGFILE_XILINX)
+    ,.SUPPORT_DUAL_ISSUE(1)
 )
 u_issue
 (
@@ -644,14 +629,6 @@ u_fetch
     ,.fetch_pc_o(fetch_dec_pc_w)
     ,.fetch_fault_fetch_o(fetch_dec_fault_fetch_w)
     ,.fetch_fault_page_o(fetch_dec_fault_page_w)
-    ,.fetch_instr_exec_o(fetch_dec_instr_exec_w)
-    ,.fetch_instr_lsu_o(fetch_dec_instr_lsu_w)
-    ,.fetch_instr_branch_o(fetch_dec_instr_branch_w)
-    ,.fetch_instr_mul_o(fetch_dec_instr_mul_w)
-    ,.fetch_instr_div_o(fetch_dec_instr_div_w)
-    ,.fetch_instr_csr_o(fetch_dec_instr_csr_w)
-    ,.fetch_instr_rd_valid_o(fetch_dec_instr_rd_valid_w)
-    ,.fetch_instr_invalid_o(fetch_dec_instr_invalid_w)
     ,.icache_rd_o(mmu_ifetch_rd_w)
     ,.icache_flush_o(mmu_ifetch_flush_w)
     ,.icache_invalidate_o(mmu_ifetch_invalidate_w)

@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V1.0
+//                            V1.0.1
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2019
 //
@@ -103,7 +103,8 @@ module riscv_csr
 //-----------------------------------------------------------------
 wire ecall_w             = opcode_valid_i && ((opcode_opcode_i & `INST_ECALL_MASK)      == `INST_ECALL);
 wire ebreak_w            = opcode_valid_i && ((opcode_opcode_i & `INST_EBREAK_MASK)     == `INST_EBREAK);
-wire eret_w              = opcode_valid_i && ((opcode_opcode_i & `INST_MRET_MASK)       == `INST_MRET);
+wire eret_w              = opcode_valid_i && ((opcode_opcode_i & `INST_ERET_MASK)       == `INST_ERET);
+wire [1:0] eret_priv_w   = opcode_opcode_i[29:28];
 wire csrrw_w             = opcode_valid_i && ((opcode_opcode_i & `INST_CSRRW_MASK)      == `INST_CSRRW);
 wire csrrs_w             = opcode_valid_i && ((opcode_opcode_i & `INST_CSRRS_MASK)      == `INST_CSRRS);
 wire csrrc_w             = opcode_valid_i && ((opcode_opcode_i & `INST_CSRRC_MASK)      == `INST_CSRRC);
@@ -212,6 +213,9 @@ reg [ 31:0]             rd_result_e1_q;
 reg [ 31:0]             csr_wdata_e1_q;
 reg [`EXCEPTION_W-1:0]  exception_e1_q;
 
+// Inappropriate xRET for the current exec priv level
+wire                    eret_fault_w = eret_w && (current_priv_w < eret_priv_w);
+
 always @ (posedge clk_i or posedge rst_i)
 if (rst_i)
 begin
@@ -226,7 +230,7 @@ begin
 
     // Invalid instruction / CSR access fault?
     // Record opcode for writing to csr_xtval later.
-    if (opcode_invalid_i || csr_fault_r)
+    if (opcode_invalid_i || csr_fault_r || eret_fault_w)
         rd_result_e1_q  <= opcode_opcode_i;
     else    
         rd_result_e1_q  <= csr_rdata_w;
@@ -234,8 +238,11 @@ begin
     // E1 CSR exceptions
     if ((opcode_opcode_i & `INST_ECALL_MASK) == `INST_ECALL)
         exception_e1_q  <= `EXCEPTION_ECALL + {4'b0, current_priv_w};
-    else if ((opcode_opcode_i & `INST_MRET_MASK) == `INST_MRET)
-        exception_e1_q  <= `EXCEPTION_ERET; // TODO: MPRIV
+    // xRET for priv level above this one - fault
+    else if (eret_fault_w)
+        exception_e1_q  <= `EXCEPTION_ILLEGAL_INSTRUCTION;
+    else if ((opcode_opcode_i & `INST_ERET_MASK) == `INST_ERET)
+        exception_e1_q  <= `EXCEPTION_ERET_U + {4'b0, eret_priv_w};
     else if ((opcode_opcode_i & `INST_EBREAK_MASK) == `INST_EBREAK)
         exception_e1_q  <= `EXCEPTION_BREAKPOINT;
     else if (opcode_invalid_i || csr_fault_r)

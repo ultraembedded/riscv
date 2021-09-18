@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------
 //                         RISC-V Core
-//                            V1.0
+//                            V1.0.1
 //                     Ultra-Embedded.com
 //                     Copyright 2014-2019
 //
@@ -531,6 +531,7 @@ assign csr_opcode_rb_idx_o      = opcode_rb_idx_o;
 assign csr_opcode_ra_operand_o  = opcode_ra_operand_o;
 assign csr_opcode_rb_operand_o  = opcode_rb_operand_o;
 assign csr_opcode_invalid_o     = opcode_issue_r && issue_invalid_w;
+
 
 //-------------------------------------------------------------
 // Checker Interface
