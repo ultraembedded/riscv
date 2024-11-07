@@ -11,19 +11,19 @@ Dependencies;
 * libbfd
 
 To install the dependencies on Linux Ubuntu/Mint;
-```
+```bash
 sudo apt-get install libelf-dev binutils-dev
 ```
 
 To build the executable, type:
-```
+```bash
 make
-````
+```
 
 ## Usage
 
 The simulator will load and run a compiled ELF (compiled with RV32I or RV32IM compiler options);
-```
+```bash
 # Using a makerule
 make run
 
@@ -38,7 +38,7 @@ which boots Linux (modified 4.19 compiled for RV32IM).
 ## Extensions
 
 The following primitives can be used to print to the console or to exit a simulation;
-```
+```c
 
 #define CSR_SIM_CTRL_EXIT (0 << 24)
 #define CSR_SIM_CTRL_PUTC (1 << 24)

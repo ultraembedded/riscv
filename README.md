@@ -86,20 +86,41 @@ Dependencies;
 * gcc
 * make
 * libelf
-* System-C (specify path using SYSTEMC_HOME)
-* Verilator (specify path using VERILATOR_SRC)
+* System-C (specify path using `SYSTEMC_HOME`), version 3.2.x
+* Verilator (specify path using `VERILATOR_SRC`), version 4.038
 
 To build the testbench;
-```
+```bash
 cd top_tcm_axi/tb
 make
-````
+```
 
 To run the provided test executable;
-```
+```bash
 cd top_tcm_axi/tb
 make run
-````
+```
+
+### Testbench Using Docker
+
+To run the testbench using the provided Dockerfile, run:
+
+```bash
+# 1. Build the Docker container:
+docker build -t riscv_build .
+
+# 2. Start Docker container:
+docker run -it --rm --user (id -u):(id -g) -v (pwd):/project riscv_build
+# Press enter again.
+
+# 3. Inside the Docker container's shell, run:
+cd cd top_tcm_axi/tb
+make run
+
+# 4. Run an arbitary .elf file.
+./build/test.x -f ../../isa_sim/images/basic.elf
+./build/test.x -f ../../isa_sim/images/linux.elf -b 0x80000000 -s 33554432
+```
 
 ## Example Core Instance (with caches)
 
